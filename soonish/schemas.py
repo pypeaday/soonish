@@ -13,9 +13,13 @@ class EventBase(BaseModel):
 class EventCreate(EventBase):
     pass
 
-class EventUpdate(EventBase):
+class EventUpdate(BaseModel):
     title: Optional[str] = None
+    description: Optional[str] = None
     target_date: Optional[datetime] = None
+    notify_before: Optional[int] = None
+    is_recurring: Optional[bool] = None
+    recurrence_pattern: Optional[str] = None
 
 class Event(EventBase):
     id: int

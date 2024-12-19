@@ -10,6 +10,7 @@ from authlib.integrations.starlette_client import OAuth
 from starlette.config import Config
 from datetime import timedelta
 from pathlib import Path
+import httpx
 
 from soonish.database import get_session
 from soonish.models import User
@@ -37,7 +38,11 @@ if settings.github_client_id and settings.github_client_secret:
         authorize_url='https://github.com/login/oauth/authorize',
         authorize_params=None,
         api_base_url='https://api.github.com/',
-        client_kwargs={'scope': 'user:email'},
+        client_kwargs={
+            'scope': 'user:email',
+            'token_endpoint_auth_method': 'client_secret_post',
+            'token_placement': 'header'
+        }
     )
 
 # Google OAuth setup
@@ -47,7 +52,10 @@ if settings.google_client_id and settings.google_client_secret:
         client_id=settings.google_client_id,
         client_secret=settings.google_client_secret,
         server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-        client_kwargs={'scope': 'openid email profile'},
+        client_kwargs={
+            'scope': 'openid email profile',
+            'prompt': 'select_account'
+        }
     )
 
 @router.get("/login")
@@ -64,7 +72,7 @@ async def github_login(request: Request):
     """Initiate GitHub OAuth flow."""
     if not settings.github_client_id:
         raise HTTPException(status_code=400, detail="GitHub OAuth not configured")
-    redirect_uri = str(request.base_url)[:-1] + router.url_path_for('github_callback')
+    redirect_uri = "https://soonish.paynepride.com/auth/github/callback"
     return await oauth.github.authorize_redirect(request, redirect_uri)
 
 @router.get("/login/google")
@@ -72,8 +80,17 @@ async def google_login(request: Request):
     """Initiate Google OAuth flow."""
     if not settings.google_client_id:
         raise HTTPException(status_code=400, detail="Google OAuth not configured")
-    redirect_uri = str(request.base_url)[:-1] + router.url_path_for('google_callback')
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    
+    redirect_uri = "https://soonish.paynepride.com/auth/google/callback"
+    try:
+        return await oauth.google.authorize_redirect(
+            request, 
+            redirect_uri,
+            prompt='select_account'
+        )
+    except Exception as e:
+        print(f"Error in Google login: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/github/callback")
 async def github_callback(
@@ -121,51 +138,67 @@ async def github_callback(
         value=f"Bearer {access_token}",
         httponly=True,
         max_age=settings.access_token_expire_minutes * 60,
-        samesite='lax'
+        samesite='lax',
+        secure=True
     )
     return response
 
 @router.get("/google/callback")
-async def google_callback(
-    request: Request,
-    session: AsyncSession = Depends(get_session)
-):
+async def google_callback(request: Request, session: AsyncSession = Depends(get_session)):
     """Handle Google OAuth callback."""
-    token = await oauth.google.authorize_access_token(request)
-    user_info = token.get('userinfo')
-    
-    # Find or create user
-    result = await session.execute(
-        select(User).filter(User.oauth_id == user_info['sub'])
-    )
-    user = result.scalar_one_or_none()
-    
-    if not user:
-        user = User(
-            email=user_info['email'],
-            name=user_info['name'],
-            avatar_url=user_info['picture'],
-            oauth_provider='google',
-            oauth_id=user_info['sub']
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        print("Token received:", token.keys())  # Debug log
+        
+        # Get user info directly from Google's userinfo endpoint
+        headers = {'Authorization': f'Bearer {token["access_token"]}'}
+        async with httpx.AsyncClient() as client:
+            resp = await client.get('https://www.googleapis.com/oauth2/v3/userinfo', headers=headers)
+            user_info = resp.json()
+            print("User info received:", user_info.keys())  # Debug log
+        
+        if not user_info or 'sub' not in user_info:
+            raise HTTPException(status_code=400, detail="Failed to get user info from Google")
+        
+        # Find or create user
+        result = await session.execute(
+            select(User).filter(User.oauth_id == str(user_info['sub']))
         )
-        session.add(user)
-        await session.commit()
-    
-    # Create access token
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-    access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-    
-    response = RedirectResponse(url='/')
-    response.set_cookie(
-        key="access_token",
-        value=f"Bearer {access_token}",
-        httponly=True,
-        max_age=settings.access_token_expire_minutes * 60,
-        samesite='lax'
-    )
-    return response
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            user = User(
+                email=user_info['email'],
+                name=user_info.get('name', user_info['email']),
+                avatar_url=user_info.get('picture'),
+                oauth_provider='google',
+                oauth_id=str(user_info['sub'])
+            )
+            session.add(user)
+            await session.commit()
+        
+        # Create access token
+        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+        access_token = create_access_token(
+            data={"sub": user.email}, expires_delta=access_token_expires
+        )
+        
+        response = RedirectResponse(url='/')
+        response.set_cookie(
+            key="access_token",
+            value=f"Bearer {access_token}",
+            httponly=True,
+            max_age=settings.access_token_expire_minutes * 60,
+            samesite='lax',
+            secure=True
+        )
+        return response
+        
+    except Exception as e:
+        print(f"Error in Google callback: {str(e)}")
+        if 'token' in locals():
+            print("Token data:", token)
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/logout")
 async def logout():

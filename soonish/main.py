@@ -23,7 +23,13 @@ app = FastAPI()
 settings = Settings()
 
 # Add session middleware for OAuth
-app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=settings.secret_key,
+    same_site='lax',
+    https_only=True,
+    max_age=3600  # 1 hour
+)
 
 # CORS middleware configuration
 app.add_middleware(

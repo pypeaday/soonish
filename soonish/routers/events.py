@@ -18,10 +18,12 @@ async def create_event(
     session: AsyncSession = Depends(get_session)
 ):
     current_user = await get_current_user(request, session)
+    print(f"Creating event for user {current_user.email}: {event.model_dump()}")
     db_event = EventModel(**event.model_dump(), user_id=current_user.id)
     session.add(db_event)
     await session.commit()
     await session.refresh(db_event)
+    print(f"Created event with ID {db_event.id}")
     return db_event
 
 @router.get("/", response_model=List[Event])
@@ -31,10 +33,12 @@ async def list_events(
     session: AsyncSession = Depends(get_session)
 ):
     current_user = await get_current_user(request, session)
+    print(f"Fetching events for user {current_user.email}")
     result = await session.execute(
         select(EventModel).filter(EventModel.user_id == current_user.id)
     )
     events = result.scalars().all()
+    print(f"Found {len(events)} events")
     return events
 
 @router.get("/{event_id}", response_model=Event)

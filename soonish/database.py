@@ -4,6 +4,7 @@ Database configuration for Soonish application.
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import text
 from soonish.config import Settings
 import os
 
@@ -28,16 +29,21 @@ async def get_session() -> AsyncSession:
 async def init_db():
     """Initialize the database."""
     from soonish.models import Base, User, Event  # Import here to avoid circular imports
+    from sqlalchemy import text
     
-    # Drop all tables
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-    except Exception as e:
-        print(f"Error dropping tables: {e}")
-    
-    # Create all tables
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    
-    print("Database initialized successfully")
+        # Check if tables exist by trying to query the users table
+        try:
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='users'"))
+            has_tables = bool(await result.scalar())
+            
+            if not has_tables:
+                await conn.run_sync(Base.metadata.create_all)
+                print("Database initialized successfully")
+            else:
+                print("Database tables already exist, skipping initialization")
+                
+        except Exception as e:
+            print(f"Error checking tables, attempting to create them: {e}")
+            await conn.run_sync(Base.metadata.create_all)
+            print("Database initialized successfully")
