@@ -1,56 +1,100 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" x-data="{ darkMode: localStorage.getItem('darkMode') === 'true' }" :class="{ 'dark': darkMode }">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Soonish - Event Countdown Dashboard{% endblock %}</title>
-    
-    <!-- TailwindCSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- HTMX -->
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <!-- Alpine.js for interactivity -->
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    
-    <!-- Custom Tailwind Config -->
+    <script src="https://unpkg.com/htmx.org@1.9.4"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
-                        primary: '#3b82f6',
+                        primary: {
+                            DEFAULT: '#3b82f6',
+                            dark: '#2563eb',
+                            darker: '#1d4ed8'
+                        },
+                        secondary: {
+                            DEFAULT: '#6366f1',
+                            dark: '#4f46e5',
+                            darker: '#4338ca'
+                        },
+                        dark: {
+                            DEFAULT: '#1f2937',
+                            lighter: '#374151',
+                            darker: '#111827'
+                        }
                     }
                 }
             }
         }
     </script>
+    <style type="text/tailwindcss">
+        @layer base {
+            body {
+                @apply bg-gray-50 text-gray-900 transition-colors duration-200 dark:bg-dark-darker dark:text-gray-100;
+            }
+        }
+        @layer components {
+            .btn-primary {
+                @apply bg-primary px-4 py-2 text-white rounded-md hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:ring-offset-dark-darker transition-all duration-200;
+            }
+            .card {
+                @apply bg-white dark:bg-dark-lighter border dark:border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-all duration-200;
+            }
+            .input {
+                @apply bg-white dark:bg-dark border dark:border-gray-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-primary-dark focus:border-transparent dark:text-gray-100 transition-all duration-200;
+            }
+            .select {
+                @apply bg-white dark:bg-dark border dark:border-gray-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-primary-dark focus:border-transparent dark:text-gray-100 transition-all duration-200;
+            }
+        }
+    </style>
 </head>
-<body class="bg-gray-100">
+<body class="min-h-screen">
     <!-- Navigation -->
-    <nav class="bg-white shadow">
+    <nav class="bg-white dark:bg-dark shadow-sm transition-colors duration-200">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex">
                     <div class="flex-shrink-0 flex items-center">
-                        <a href="/" class="text-2xl font-bold text-primary">Soonish</a>
+                        <a href="/" class="text-2xl font-bold text-primary dark:text-primary-dark">Soonish</a>
                     </div>
                 </div>
-                <div class="flex items-center">
+                <div class="flex items-center space-x-4">
+                    <!-- Theme Toggle -->
+                    <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode)"
+                            class="p-2 rounded-lg bg-gray-100 dark:bg-dark-lighter text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-dark focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-600">
+                        <!-- Sun icon -->
+                        <svg x-show="darkMode" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        <!-- Moon icon -->
+                        <svg x-show="!darkMode" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                        </svg>
+                    </button>
                     {% if user %}
-                        <a href="/events/new" class="mr-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-blue-600">
-                            New Event
-                        </a>
+                        <a href="/events/new" class="btn-primary">New Event</a>
+                    {% endif %}
+                    {% if user %}
                         <div class="relative ml-3">
                             <div class="flex items-center">
                                 {% if user.avatar_url %}
                                     <img class="h-8 w-8 rounded-full" src="{{ user.avatar_url }}" alt="{{ user.name }}">
                                 {% endif %}
-                                <span class="ml-2 text-gray-700">{{ user.name }}</span>
-                                <a href="/auth/logout" class="ml-4 text-sm text-gray-500 hover:text-gray-700">Sign out</a>
+                                <span class="ml-2 text-gray-700 dark:text-gray-100">{{ user.name }}</span>
+                                <a href="/auth/logout" class="ml-4 text-sm text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-100">Sign out</a>
                             </div>
                         </div>
                     {% else %}
-                        <a href="/auth/login" class="text-sm font-medium text-gray-500 hover:text-gray-700">
+                        <a href="/auth/login" class="text-sm font-medium text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-100">
                             Sign in
                         </a>
                     {% endif %}
@@ -60,17 +104,25 @@
     </nav>
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {% block content %}{% endblock %}
     </main>
 
     <!-- Footer -->
-    <footer class="bg-white mt-auto">
+    <footer class="bg-white dark:bg-dark mt-auto">
         <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-            <p class="text-center text-sm text-gray-500">
+            <p class="text-center text-sm text-gray-500 dark:text-gray-300">
                 &copy; {{ year }} Soonish. All rights reserved.
             </p>
         </div>
     </footer>
+
+    <script>
+        // Check system dark mode preference on load
+        if (!localStorage.getItem('darkMode')) {
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            localStorage.setItem('darkMode', prefersDark);
+        }
+    </script>
 </body>
 </html>
