@@ -2,7 +2,7 @@
 Database models for Soonish application.
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, event
 from sqlalchemy.orm import relationship
 from soonish.database import Base
 
@@ -31,6 +31,7 @@ class Event(Base):
     description = Column(Text, nullable=True)
     target_date = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     notify_before = Column(Integer, nullable=True)  # Minutes before event to notify
     is_recurring = Column(Boolean, default=False)
     recurrence_pattern = Column(String, nullable=True)  # daily, weekly, monthly, yearly
@@ -38,3 +39,8 @@ class Event(Base):
     
     # Relationships
     user = relationship("User", back_populates="events")
+
+# SQLAlchemy event listeners to ensure updated_at is set
+@event.listens_for(Event, 'before_update')
+def set_updated_at(mapper, connection, target):
+    target.updated_at = datetime.utcnow()

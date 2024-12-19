@@ -82,3 +82,34 @@ Something broke and I asked you to fix it. Now that it has been fixed, please pr
   3. Document dependency requirements for helper functions
 - **Impact**: Homepage was failing to load due to session handling error
 - **Resolution**: Fixed session dependency injection throughout the authentication chain
+
+## 2024-12-18: Event Creation Error - Missing Updated At Field
+
+### Description
+When creating a new event, the application returned a validation error due to a missing `updated_at` field in the Event model while it was required in the Event schema.
+
+### Root Cause
+- The Event schema required an `updated_at` field
+- The Event model did not include this field
+- This mismatch caused a ResponseValidationError when creating new events
+
+### Resolution
+1. Added `updated_at` field to Event model with automatic update functionality:
+   ```python
+   updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+   ```
+2. Added SQLAlchemy event listener to ensure `updated_at` is always set on updates:
+   ```python
+   @event.listens_for(Event, 'before_update')
+   def set_updated_at(mapper, connection, target):
+       target.updated_at = datetime.utcnow()
+   ```
+
+### Prevention
+- Always ensure model fields match schema requirements
+- Add validation tests for model-schema compatibility
+- Document required fields in both models and schemas
+
+### Impact
+- Event creation was failing
+- Fixed by adding the missing field with proper defaults

@@ -4,11 +4,13 @@ Main application module for Soonish.
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import RedirectResponse
 from pathlib import Path
 from datetime import datetime
 from soonish.database import init_db, get_session
 from soonish.routers import events, auth
 from soonish.auth import get_current_user
+from soonish.dependencies import redirect_to_landing, login_required
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from soonish.config import Settings
@@ -31,6 +33,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add exception handlers
+app.add_exception_handler(HTTPException, redirect_to_landing)
 
 # Mount static files
 static_path = Path(__file__).parent / "static"
@@ -69,14 +74,34 @@ async def index(
     request: Request,
     session: AsyncSession = Depends(get_session)
 ):
-    """Render the index page."""
+    """Render either the landing page or dashboard based on authentication status."""
     user = await get_optional_user(request, session)
-    return templates.TemplateResponse("index.html", {
+    
+    if user is None:
+        return templates.TemplateResponse("landing.html", {
+            "request": request,
+            "user": None
+        })
+    
+    return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "user": user
     })
 
+@app.get("/dashboard")
+@login_required
+async def dashboard(
+    request: Request,
+    current_user=Depends(get_current_user)
+):
+    """Render the dashboard page. Requires authentication."""
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request,
+        "user": current_user
+    })
+
 @app.get("/events/new")
+@login_required
 async def new_event(
     request: Request,
     current_user=Depends(get_current_user)
@@ -88,6 +113,7 @@ async def new_event(
     })
 
 @app.get("/events/{event_id}/edit")
+@login_required
 async def edit_event(
     request: Request,
     event_id: int,
@@ -100,15 +126,15 @@ async def edit_event(
         "user": current_user
     })
 
-# Initialize database on startup
 @app.on_event("startup")
 async def startup_event():
+    """Initialize the database on startup."""
     await init_db()
 
-@app.get("/api/v1/")
+@app.get("/health")
 async def root():
-    """Root endpoint returning application status."""
-    return {"status": "running", "app": "soonish"}
+    """Health check endpoint."""
+    return {"status": "healthy"}
 
 if __name__ == "__main__":
     uvicorn.run("soonish.main:app", host="0.0.0.0", port=8000, reload=True)
