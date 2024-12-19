@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Soonish{% endblock %}</title>
+    <title>{% block title %}Soonish - Event Countdown Dashboard{% endblock %}</title>
     
     <!-- TailwindCSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -18,17 +18,16 @@
             theme: {
                 extend: {
                     colors: {
-                        primary: '#3B82F6',
-                        secondary: '#6B7280',
+                        primary: '#3b82f6',
                     }
                 }
             }
         }
     </script>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-gray-100">
     <!-- Navigation -->
-    <nav class="bg-white shadow-lg">
+    <nav class="bg-white shadow">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex">
@@ -37,9 +36,24 @@
                     </div>
                 </div>
                 <div class="flex items-center">
-                    <a href="/events/new" class="bg-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-600">
-                        New Event
-                    </a>
+                    {% if user %}
+                        <a href="/events/new" class="mr-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-blue-600">
+                            New Event
+                        </a>
+                        <div class="relative ml-3">
+                            <div class="flex items-center">
+                                {% if user.avatar_url %}
+                                    <img class="h-8 w-8 rounded-full" src="{{ user.avatar_url }}" alt="{{ user.name }}">
+                                {% endif %}
+                                <span class="ml-2 text-gray-700">{{ user.name }}</span>
+                                <a href="/auth/logout" class="ml-4 text-sm text-gray-500 hover:text-gray-700">Sign out</a>
+                            </div>
+                        </div>
+                    {% else %}
+                        <a href="/auth/login" class="text-sm font-medium text-gray-500 hover:text-gray-700">
+                            Sign in
+                        </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -51,9 +65,9 @@
     </main>
 
     <!-- Footer -->
-    <footer class="bg-white border-t mt-auto">
-        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <p class="text-center text-gray-500 text-sm">
+    <footer class="bg-white mt-auto">
+        <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+            <p class="text-center text-sm text-gray-500">
                 &copy; {{ year }} Soonish. All rights reserved.
             </p>
         </div>
