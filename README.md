@@ -1,93 +1,90 @@
 # Soonish
 
-# Countdown Dashboard
-# Countdown Dashboard
+A modern countdown dashboard for tracking your upcoming events.
 
 ## Overview
-Countdown Dashboard is a SaaS platform designed to help users create and manage a personalized dashboard of countdowns to their most important events. With features like OAuth-based authentication, event sharing, and reminders, it offers an intuitive way to track upcoming occasions and share them with friends, family, or coworkers.
+Soonish is a web application that helps you create and manage countdowns to your important events. Built with FastAPI and TailwindCSS, it provides a clean, responsive interface for tracking dates that matter to you.
 
 ## Features
-- **Event Management**: Create, update, and delete countdowns to events.
-- **Authentication**: Secure sign-in with Google and GitHub OAuth.
-- **Event Sharing**: Share events via public links or collaborate with others.
-- **Reminders and Notifications**: Set reminders and recurring events to stay updated.
-- **Responsive UI**: A lightweight and responsive frontend built with HTMX and TailwindCSS.
+- [x] **Event Management**
+  - Create, edit, and delete events
+  - Set event dates with optional time (defaults to noon)
+  - View countdown timers for all events
+- [ ] **Authentication** (Coming Soon)
+  - Sign in with Google or GitHub
+  - Secure event access
+- [ ] **Event Sharing** (Coming Soon)
+  - Generate public event links
+  - Collaborative event dashboards
+- [ ] **Notifications** (Coming Soon)
+  - Get reminders for upcoming events
+  - Email notifications
+  - Recurring event support
 
 ## Tech Stack
 ### Backend
 - **Framework**: FastAPI
-- **Database**: SQLite (initially, with the potential to migrate to PostgreSQL for scaling)
-- **Hosting**: Fly.io
+- **Database**: SQLite with async support
+- **ORM**: SQLAlchemy
 
 ### Frontend
-- **Framework**: HTMX for dynamic interactions
-- **CSS**: TailwindCSS served via CDN
+- **Styling**: TailwindCSS
+- **Interactivity**: Vanilla JavaScript
+- **UI Components**: Custom responsive design
 
-## Project Structure
-```
-project-root
-├── backend
-│   ├── main.py
-│   ├── models/
-│   ├── routes/
-│   ├── schemas/
-│   └── requirements.txt
-├── frontend
-│   ├── templates/
-│   ├── static/
-│   └── README.md
-└── README.md
-```
+### Development
+- **Container**: Docker
+- **Environment**: Python 3.12
+- **Package Manager**: uv
 
-## Installation
-### Backend Setup
-1. Clone the repository.
-2. Setup a venv
+## Getting Started
+
+### Prerequisites
+- Docker and Docker Compose
+- Python 3.12+ (for local development)
+- uv (for dependency management)
+
+### Running with Docker
+1. Clone the repository
+2. Start the application:
+   ```bash
+   docker compose up
+   ```
+3. Visit http://localhost:8000
+
+### Local Development
+1. Create a virtual environment:
    ```bash
    uv venv
    source .venv/bin/activate
    ```
-3. Install dependencies:
+2. Install dependencies:
    ```bash
    uv pip install -r requirements.txt
    ```
-4. Run the server:
+3. Run the application:
    ```bash
-   uvicorn main:app --reload
+   python soonish/main.py
    ```
 
-### Frontend Setup
-1. Add TailwindCSS via CDN in your HTML files:
-   ```html
-   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-   ```
-2. Include HTMX in your HTML files:
-   ```html
-   <script src="https://unpkg.com/htmx.org"></script>
-   ```
-3. Create templates and static files under the `frontend/templates` and `frontend/static` directories.
-
-## Deployment
-- Backend and frontend will be deployed on Fly.io with containerized environments.
+## Project Structure
+```
+soonish/
+├── database.py    # Database configuration
+├── main.py        # Application entry point
+├── models.py      # SQLAlchemy models
+├── schemas.py     # Pydantic schemas
+├── config.py      # Configuration management
+├── routers/       # API routes
+└── templates/     # HTML templates
+```
 
 ## Contributing
-1. Fork the repository.
-2. Create a feature branch:
-   ```bash
-   git checkout -b feature/your-feature
-   ```
-3. Commit your changes:
-   ```bash
-   git commit -m "Add your message here"
-   ```
-4. Push to the branch:
-   ```bash
-   git push origin feature/your-feature
-   ```
-5. Submit a pull request.
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
-This project is not distributed
-
-## Contact
-For questions or feedback, reach out to Nic Payne | soonish@pype.dev
+This project is licensed under the MIT License - see the LICENSE file for details.
