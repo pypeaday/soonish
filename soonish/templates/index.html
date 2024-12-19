@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white shadow overflow-hidden sm:rounded-lg">
+    <div class="px-4 py-5 sm:px-6">
+        <h1 class="text-2xl font-bold text-gray-900">Your Upcoming Events</h1>
+        <p class="mt-1 max-w-2xl text-sm text-gray-500">Keep track of what's coming up next.</p>
+    </div>
+
+    <!-- Event Grid -->
+    <div id="events-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+        <div class="text-center text-gray-500 py-8">Loading events...</div>
+    </div>
+</div>
+
+<!-- Event Card Template -->
+<template id="event-template">
+    <div class="bg-white overflow-hidden shadow rounded-lg border">
+        <div class="px-4 py-5 sm:p-6">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-medium text-gray-900"></h3>
+                <span class="countdown font-mono text-xl"></span>
+            </div>
+            <p class="mt-1 text-sm text-gray-500"></p>
+            <div class="mt-4 flex justify-between items-center">
+                <span class="text-sm text-gray-500"></span>
+                <div class="space-x-2">
+                    <button class="text-primary hover:text-blue-600"
+                            onclick="editEvent(this.closest('.event-card').dataset.eventId)">
+                        Edit
+                    </button>
+                    <button class="text-red-600 hover:text-red-700"
+                            onclick="deleteEvent(this.closest('.event-card').dataset.eventId)">
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const response = await fetch('/api/v1/events');
+        const events = await response.json();
+        const grid = document.getElementById('events-grid');
+        grid.innerHTML = '';
+
+        if (events.length === 0) {
+            grid.innerHTML = `
+                <div class="col-span-full text-center text-gray-500 py-8">
+                    No events yet. Click "New Event" to create one!
+                </div>
+            `;
+            return;
+        }
+
+        events.forEach(event => {
+            const template = document.getElementById('event-template');
+            const clone = template.content.cloneNode(true);
+            const card = clone.querySelector('div');
+            
+            card.classList.add('event-card');
+            card.dataset.eventId = event.id;
+            
+            card.querySelector('h3').textContent = event.title;
+            card.querySelector('p').textContent = event.description || 'No description';
+            
+            const targetDate = new Date(event.target_date);
+            card.querySelector('span.countdown').textContent = getCountdown(targetDate);
+            card.querySelector('span.text-gray-500').textContent = targetDate.toLocaleDateString();
+            
+            grid.appendChild(card);
+        });
+    });
+
+    function getCountdown(targetDate) {
+        const now = new Date();
+        const diff = targetDate - now;
+        
+        if (diff < 0) return 'Past event';
+        
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        
+        if (days > 0) return `${days}d ${hours}h`;
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        return `${minutes}m`;
+    }
+
+    async function deleteEvent(eventId) {
+        if (!confirm('Are you sure you want to delete this event?')) return;
+        
+        const response = await fetch(`/api/v1/events/${eventId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            document.querySelector(`[data-event-id="${eventId}"]`).remove();
+        } else {
+            alert('Failed to delete event');
+        }
+    }
+
+    function editEvent(eventId) {
+        window.location.href = `/events/${eventId}/edit`;
+    }
+</script>
+{% endblock %}

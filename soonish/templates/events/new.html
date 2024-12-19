@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+        <div class="px-4 py-5 sm:px-6">
+            <h2 class="text-2xl font-bold text-gray-900">Create New Event</h2>
+            <p class="mt-1 text-sm text-gray-500">Add a new event to your countdown dashboard.</p>
+        </div>
+        <div class="px-4 py-5 sm:p-6">
+            <form id="event-form" class="space-y-6">
+                <div>
+                    <label for="title" class="block text-sm font-medium text-gray-700">Title</label>
+                    <input type="text" name="title" id="title" required
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                </div>
+
+                <div>
+                    <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                    <textarea name="description" id="description" rows="3"
+                              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"></textarea>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="target_date" class="block text-sm font-medium text-gray-700">Date</label>
+                        <input type="date" name="target_date" id="target_date" required
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="target_time" class="block text-sm font-medium text-gray-700">
+                            Time (optional, defaults to noon)
+                        </label>
+                        <input type="time" name="target_time" id="target_time"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                    <a href="/" class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                        Cancel
+                    </a>
+                    <button type="submit"
+                            class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                        Create Event
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // Set default date to today
+    const today = new Date();
+    document.getElementById('target_date').value = today.toISOString().split('T')[0];
+    
+    // Set default time to 12:00 (noon)
+    document.getElementById('target_time').value = '12:00';
+});
+
+document.getElementById('event-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const date = formData.get('target_date');
+    const time = formData.get('target_time') || '12:00';
+    
+    const data = {
+        title: formData.get('title'),
+        description: formData.get('description'),
+        target_date: new Date(`${date}T${time}`).toISOString(),
+        is_recurring: false
+    };
+    
+    try {
+        const response = await fetch('/api/v1/events', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            window.location.href = '/';
+        } else {
+            const error = await response.json();
+            alert('Error creating event: ' + error.detail);
+        }
+    } catch (error) {
+        alert('Error creating event: ' + error.message);
+    }
+});
+</script>
+{% endblock %}
