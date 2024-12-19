@@ -9,7 +9,16 @@ A modern event countdown dashboard built with FastAPI, TailwindCSS, and HTMX.
 - Set target dates and times
 - Add descriptions and recurrence patterns
 - View countdown timers
+- Interactive event cards with modal details
 - Responsive dashboard layout
+
+### User Interface
+- Dark theme support with system preference detection
+- Theme toggle with smooth transitions
+- Modal dialogs for detailed event views
+- Enhanced visual feedback on interactions
+- Consistent styling and animations
+- Accessibility-focused design
 
 ### Search and Organization
 - Real-time search by title and description
@@ -37,8 +46,10 @@ A modern event countdown dashboard built with FastAPI, TailwindCSS, and HTMX.
 ### Frontend
 - TailwindCSS for styling
 - Alpine.js for reactivity
+- Dark mode with system preference support
 - Responsive design
 - Client-side countdown calculation
+- Modal dialogs and transitions
 
 ### Development
 - Docker development environment
@@ -59,7 +70,10 @@ A modern event countdown dashboard built with FastAPI, TailwindCSS, and HTMX.
 4. Visit http://localhost:8000
 
 ## Coming Soon
-- Calendar view with week/month layouts
-- Event sharing with public links
-- Email notifications
-- Drag-and-drop date selection
+- Theme customization options
+- Enhanced form controls
+- Real-time validation
+- Notification system
+- Event categories with color coding
+- List/grid view toggle
+- Drag-and-drop reordering
