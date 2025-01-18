@@ -82,6 +82,12 @@
                 <!-- Modal Footer -->
                 <div class="px-6 py-4 bg-gray-50 dark:bg-dark border-t border-gray-200 dark:border-dark-lighter">
                     <div class="flex justify-end space-x-3">
+                        <template x-if="selectedEvent?.is_recurring && new Date(selectedEvent?.target_date) < new Date()">
+                            <button @click="resetRecurringEvent(selectedEvent?.id)"
+                                    class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 dark:bg-green-700/80 dark:hover:bg-green-800/90 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:ring-offset-dark">
+                                Reset Event
+                            </button>
+                        </template>
                         <button @click="editEvent(selectedEvent?.id)"
                                 class="btn-primary">
                             Edit Event
@@ -277,6 +283,74 @@ function eventsData() {
         
         editEvent(eventId) {
             window.location.href = `/events/${eventId}/edit`
+        },
+
+        async resetRecurringEvent(eventId) {
+            try {
+                const event = this.events.find(e => e.id === eventId);
+                if (!event) throw new Error('Event not found');
+
+                const now = new Date();
+                // Convert event's target date to local date/time inputs
+                const localDateTime = timezoneUtils.utcToLocalInputs(event.target_date);
+                let newDate = new Date(`${localDateTime.date}T${localDateTime.time}`);
+
+                // Calculate next occurrence based on recurrence pattern
+                switch (event.recurrence_pattern) {
+                    case 'daily':
+                        while (newDate <= now) {
+                            newDate.setDate(newDate.getDate() + 1);
+                        }
+                        break;
+                    case 'weekly':
+                        while (newDate <= now) {
+                            newDate.setDate(newDate.getDate() + 7);
+                        }
+                        break;
+                    case 'monthly':
+                        while (newDate <= now) {
+                            newDate.setMonth(newDate.getMonth() + 1);
+                        }
+                        break;
+                    case 'yearly':
+                        while (newDate <= now) {
+                            newDate.setFullYear(newDate.getFullYear() + 1);
+                        }
+                        break;
+                    default:
+                        throw new Error('Invalid recurrence pattern');
+                }
+
+                // Convert back to UTC for API
+                const newTargetDate = timezoneUtils.localToUTC(
+                    newDate.toISOString().split('T')[0],
+                    newDate.toTimeString().split(' ')[0].slice(0, 5)
+                );
+
+                const response = await fetch(`/api/v1/events/${eventId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        ...event,
+                        target_date: newTargetDate // newTargetDate is already in ISO format from localToUTC
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Failed to reset event');
+                }
+
+                // Update local event data
+                const updatedEvent = await response.json();
+                this.events = this.events.map(e => e.id === eventId ? updatedEvent : e);
+                this.selectedEvent = updatedEvent;
+            } catch (error) {
+                console.error('Error resetting event:', error);
+                alert('Failed to reset event: ' + error.message);
+            }
         },
         
         get filteredEvents() {
