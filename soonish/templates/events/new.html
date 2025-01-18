@@ -52,11 +52,12 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    // Set default date to today
+    // Set default date to today in local timezone
     const today = new Date();
-    document.getElementById('target_date').value = today.toISOString().split('T')[0];
+    const localDate = today.toLocaleDateString('en-CA'); // YYYY-MM-DD format
+    document.getElementById('target_date').value = localDate;
     
-    // Set default time to 12:00 (noon)
+    // Set default time to 12:00 (noon) local time
     document.getElementById('target_time').value = '12:00';
 });
 
@@ -64,14 +65,14 @@ document.getElementById('event-form').addEventListener('submit', async (e) => {
     e.preventDefault()
     
     const formData = new FormData(e.target)
-    const date = formData.get('target_date')
-    const time = formData.get('target_time') || '12:00'
-    const target_date = new Date(`${date}T${time}`)
+    const date = formData.get('target_date');
+    const time = formData.get('target_time') || '12:00';
+    const target_date = timezoneUtils.localToUTC(date, time);
     
     const data = {
         title: formData.get('title'),
         description: formData.get('description'),
-        target_date: target_date.toISOString(),
+        target_date: target_date,
         is_recurring: false,
         recurrence_pattern: null
     }

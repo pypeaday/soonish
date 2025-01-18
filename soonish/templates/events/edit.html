@@ -71,13 +71,10 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('title').value = event.title
             document.getElementById('description').value = event.description || ''
             
-            // Format date and time
-            const targetDate = new Date(event.target_date)
-            const dateStr = targetDate.toISOString().split('T')[0]
-            const timeStr = targetDate.toTimeString().split(':').slice(0, 2).join(':')
-            
-            document.getElementById('target_date').value = dateStr
-            document.getElementById('target_time').value = timeStr
+            // Format date and time using timezone utils
+            const localDateTime = timezoneUtils.utcToLocalInputs(event.target_date);
+            document.getElementById('target_date').value = localDateTime.date;
+            document.getElementById('target_time').value = localDateTime.time;
         })
         .catch(error => {
             console.error('Error fetching event:', error)
@@ -91,14 +88,14 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault()
         
         const formData = new FormData(e.target)
-        const date = formData.get('target_date')
-        const time = formData.get('target_time') || '12:00'
-        const target_date = new Date(`${date}T${time}`)
+        const date = formData.get('target_date');
+        const time = formData.get('target_time') || '12:00';
+        const target_date = timezoneUtils.localToUTC(date, time);
         
         const data = {
             title: formData.get('title'),
             description: formData.get('description') || null,
-            target_date: target_date.toISOString(),
+            target_date: target_date,
             is_recurring: false,
             notify_before: null,
             recurrence_pattern: null
