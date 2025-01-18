@@ -31,3 +31,8 @@ ENV/
 .env.development.local
 .env.test.local
 .env.production.local
+soonish.egg-info/dependency_links.txt
+soonish.egg-info/PKG-INFO
+soonish.egg-info/requires.txt
+soonish.egg-info/SOURCES.txt
+soonish.egg-info/top_level.txt
