@@ -40,6 +40,13 @@
                 <!-- Modal Content -->
                 <div class="px-6 py-4">
                     <div class="space-y-4">
+                        <!-- Category -->
+                        <div class="flex items-center" x-show="selectedEvent?.category">
+                            <span class="w-3 h-3 rounded-full mr-2"
+                                  :style="{ backgroundColor: selectedEvent?.category?.color }"></span>
+                            <span class="text-gray-600 dark:text-gray-400" x-text="selectedEvent?.category?.name"></span>
+                        </div>
+
                         <!-- Countdown -->
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600 dark:text-gray-400">Time Remaining:</span>
@@ -142,17 +149,28 @@
 
             <!-- Filter -->
             <div class="sm:w-48">
-                <label for="filter" class="sr-only">Filter events</label>
-                <select id="filter" 
-                        x-model="filterBy"
-                        class="select block w-full">
-                    <option value="all">All Events</option>
-                    <option value="upcoming">Upcoming</option>
-                    <option value="past">Past</option>
-                    <option value="today">Today</option>
-                    <option value="week">This Week</option>
-                    <option value="month">This Month</option>
-                </select>
+                <div class="space-y-2">
+                    <select id="filter" 
+                            x-model="filterBy"
+                            class="select block w-full">
+                        <option value="all">All Events</option>
+                        <option value="upcoming">Upcoming</option>
+                        <option value="past">Past</option>
+                        <option value="today">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                    </select>
+                    <select id="category-filter" 
+                            x-model="categoryFilter"
+                            class="select block w-full">
+                        <option value="">All Categories</option>
+                        <template x-for="category in categories" :key="category.id">
+                            <option :value="category.id" 
+                                    :style="{ color: category.color }"
+                                    x-text="category.name"></option>
+                        </template>
+                    </select>
+                </div>
             </div>
         </div>
     </div>
@@ -182,11 +200,18 @@
                 
                 <div class="px-4 py-5 sm:p-6">
                     <div class="flex items-center justify-between">
-                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 group-hover:text-primary dark:group-hover:text-primary-dark transition-colors" x-text="event.title"></h3>
-                        <span class="countdown font-mono text-xl text-primary dark:text-primary-dark" x-text="getCountdown(event.target_date)"></span>
+                        <div class="flex-1">
+                            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 group-hover:text-primary dark:group-hover:text-primary-dark transition-colors" x-text="event.title"></h3>
+                            <div class="flex items-center mt-1" x-show="event.category">
+                                <span class="w-3 h-3 rounded-full mr-2"
+                                      :style="{ backgroundColor: event.category?.color }"></span>
+                                <span class="text-sm text-gray-500 dark:text-gray-400" x-text="event.category?.name"></span>
+                            </div>
+                        </div>
+                        <span class="countdown font-mono text-xl text-primary dark:text-primary-dark ml-4" x-text="getCountdown(event.target_date)"></span>
                     </div>
                     
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 line-clamp-2" 
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 line-clamp-2" 
                        x-text="event.description || 'No description'"></p>
                     
                     <div class="mt-4 flex justify-between items-center">
@@ -222,15 +247,30 @@
 function eventsData() {
     return {
         events: [],
+        categories: [],
         loading: true,
         searchQuery: '',
         sortBy: 'date-asc',
         filterBy: 'all',
+        categoryFilter: '',
         selectedEvent: null,
         
         async init() {
-            await this.fetchEvents()
+            await Promise.all([
+                this.fetchEvents(),
+                this.fetchCategories()
+            ])
             this.startCountdownUpdates()
+        },
+
+        async fetchCategories() {
+            try {
+                const response = await fetch('/api/v1/categories/')
+                if (!response.ok) throw new Error('Failed to fetch categories')
+                this.categories = await response.json()
+            } catch (error) {
+                console.error('Error fetching categories:', error)
+            }
         },
         
         async fetchEvents() {
@@ -334,7 +374,7 @@ function eventsData() {
                     },
                     body: JSON.stringify({
                         ...event,
-                        target_date: newTargetDate // newTargetDate is already in ISO format from localToUTC
+                        target_date: newTargetDate
                     })
                 });
 
@@ -361,7 +401,15 @@ function eventsData() {
                 const query = this.searchQuery.toLowerCase()
                 filtered = filtered.filter(event => 
                     event.title.toLowerCase().includes(query) ||
-                    (event.description && event.description.toLowerCase().includes(query))
+                    (event.description && event.description.toLowerCase().includes(query)) ||
+                    (event.category && event.category.name.toLowerCase().includes(query))
+                )
+            }
+
+            // Apply category filter
+            if (this.categoryFilter) {
+                filtered = filtered.filter(event => 
+                    event.category_id === parseInt(this.categoryFilter)
                 )
             }
             
