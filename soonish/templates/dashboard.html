@@ -116,28 +116,26 @@
 
     <!-- Search and Filter Controls -->
     <div class="px-4 py-3 border-b border-gray-200 dark:border-dark-lighter">
-        <div class="flex flex-col sm:flex-row gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
             <!-- Search -->
-            <div class="flex-1">
-                <label for="search" class="sr-only">Search events</label>
+            <div class="sm:col-span-6">
                 <div class="relative">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <svg class="h-5 w-5 text-gray-400 dark:text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
                         </svg>
                     </div>
-                    <input type="text" 
-                           id="search" 
+                    <input type="text"
+                           id="search"
                            x-model="searchQuery"
-                           class="input block w-full pl-10" 
+                           class="input block w-full pl-10"
                            placeholder="Search events...">
                 </div>
             </div>
 
             <!-- Sort -->
-            <div class="sm:w-48">
-                <label for="sort" class="sr-only">Sort events</label>
-                <select id="sort" 
+            <div class="sm:col-span-2">
+                <select id="sort"
                         x-model="sortBy"
                         class="select block w-full">
                     <option value="date-asc">Date (Nearest)</option>
@@ -147,30 +145,32 @@
                 </select>
             </div>
 
-            <!-- Filter -->
-            <div class="sm:w-48">
-                <div class="space-y-2">
-                    <select id="filter" 
-                            x-model="filterBy"
-                            class="select block w-full">
-                        <option value="all">All Events</option>
-                        <option value="upcoming">Upcoming</option>
-                        <option value="past">Past</option>
-                        <option value="today">Today</option>
-                        <option value="week">This Week</option>
-                        <option value="month">This Month</option>
-                    </select>
-                    <select id="category-filter" 
-                            x-model="categoryFilter"
-                            class="select block w-full">
-                        <option value="">All Categories</option>
-                        <template x-for="category in categories" :key="category.id">
-                            <option :value="category.id" 
-                                    :style="{ color: category.color }"
-                                    x-text="category.name"></option>
-                        </template>
-                    </select>
-                </div>
+            <!-- Time Filter -->
+            <div class="sm:col-span-2">
+                <select id="filter"
+                        x-model="filterBy"
+                        class="select block w-full">
+                    <option value="all">All Events</option>
+                    <option value="upcoming">Upcoming</option>
+                    <option value="past">Past</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                </select>
+            </div>
+
+            <!-- Category Filter -->
+            <div class="sm:col-span-2">
+                <select id="category-filter"
+                        x-model="categoryFilter"
+                        class="select block w-full">
+                    <option value="">All Categories</option>
+                    <template x-for="category in categories" :key="category.id">
+                        <option :value="category.id"
+                                :style="{ color: category.color }"
+                                x-text="category.name"></option>
+                    </template>
+                </select>
             </div>
         </div>
     </div>
@@ -193,20 +193,18 @@
         </template>
 
         <template x-for="event in filteredEvents" :key="event.id">
-            <div class="card hover:shadow-lg transition-all duration-200 hover:scale-[1.02] transform bg-white dark:bg-dark rounded-lg shadow-sm hover:shadow-gray-800/5 dark:hover:shadow-gray-700/5"
+            <div class="relative card hover:shadow-lg transition-all duration-200 hover:scale-[1.02] transform bg-white dark:bg-dark rounded-lg shadow-sm hover:shadow-gray-800/5 dark:hover:shadow-gray-700/5 overflow-hidden"
                  :class="{ 'ring-2 ring-primary dark:ring-primary-dark': selectedEvent?.id === event.id }"
                  :data-event-id="event.id"
                  @click="selectedEvent = event">
                 
-                <div class="px-4 py-5 sm:p-6">
+                <!-- Category color bar -->
+                <div x-show="event.category" class="absolute left-0 top-0 bottom-0 w-1.5" :style="{ backgroundColor: event.category?.color }"></div>
+                
+                <div class="px-4 py-5 sm:p-6" :class="{ 'pl-7': event.category }">
                     <div class="flex items-center justify-between">
                         <div class="flex-1">
                             <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 group-hover:text-primary dark:group-hover:text-primary-dark transition-colors" x-text="event.title"></h3>
-                            <div class="flex items-center mt-1" x-show="event.category">
-                                <span class="w-3 h-3 rounded-full mr-2"
-                                      :style="{ backgroundColor: event.category?.color }"></span>
-                                <span class="text-sm text-gray-500 dark:text-gray-400" x-text="event.category?.name"></span>
-                            </div>
                         </div>
                         <span class="countdown font-mono text-xl text-primary dark:text-primary-dark ml-4" x-text="getCountdown(event.target_date)"></span>
                     </div>
@@ -214,11 +212,15 @@
                     <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 line-clamp-2" 
                        x-text="event.description || 'No description'"></p>
                     
-                    <div class="mt-4 flex justify-between items-center">
-                        <span class="text-sm text-gray-500 dark:text-gray-400" x-text="formatDate(event.target_date)"></span>
+                    <div class="mt-4">
+                        <!-- Category -->
+                        <div x-show="event.category" class="text-sm text-gray-500 dark:text-gray-400 mb-2" x-text="event.category?.name"></div>
                         
-                        <!-- Event Indicators -->
-                        <div class="flex space-x-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-500 dark:text-gray-400" x-text="formatDate(event.target_date)"></span>
+                            
+                            <!-- Event Indicators -->
+                            <div class="flex space-x-2">
                             <span x-show="event.is_recurring" 
                                   class="text-primary dark:text-primary-dark" 
                                   title="Recurring Event">
