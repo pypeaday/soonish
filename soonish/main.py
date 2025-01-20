@@ -1,11 +1,15 @@
 """
 Main application module for Soonish.
+
+This module initializes the FastAPI application, sets up middleware,
+and configures the main application routes.
 """
 
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
+from fastapi.openapi.utils import get_openapi
 from pathlib import Path
 from datetime import datetime
 from soonish.database import init_db, get_session
@@ -15,15 +19,78 @@ from soonish.dependencies import redirect_to_landing, login_required
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from soonish.config import Settings
+from soonish.middleware import RateLimitMiddleware, RequestSizeMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 import json
 from typing import Optional
 import uvicorn
 
-app = FastAPI()
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title="Soonish API",
+        version="1.0.0",
+        description="""
+        Event management system API with categories and user management.
+        
+        ## Features
+        
+        * OAuth2 authentication with GitHub and Google
+        * Event management with recurring events support
+        * Category organization with color coding
+        * User-specific data isolation
+        
+        ## Rate Limiting
+        
+        The API is rate limited to 100 requests per hour per IP address.
+        Exceeding this limit will result in a 429 Too Many Requests response.
+        
+        ## Authentication
+        
+        Most endpoints require authentication. Use the /auth endpoints to
+        authenticate via GitHub or Google OAuth.
+        """,
+        routes=app.routes,
+    )
+
+    # Custom extension to add security schemes
+    openapi_schema["components"]["securitySchemes"] = {
+        "OAuth2": {
+            "type": "oauth2",
+            "flows": {
+                "authorizationCode": {
+                    "authorizationUrl": "/auth/login",
+                    "scopes": {
+                        "user": "Read user information",
+                        "email": "Read user email",
+                    },
+                }
+            },
+        }
+    }
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app = FastAPI(
+    docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json"
+)
+app.openapi = custom_openapi
 settings = Settings()
 
-# Add session middleware for OAuth
+# Add middleware in order of execution
+app.add_middleware(RequestSizeMiddleware, max_size=settings.max_request_size)
+
+app.add_middleware(
+    RateLimitMiddleware,
+    rate_limit=settings.rate_limit_requests,
+    window_size=settings.rate_limit_window,
+)
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -32,13 +99,12 @@ app.add_middleware(
     max_age=3600,  # 1 hour
 )
 
-# CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins if settings.cors_origins else ["*"],
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=settings.cors_allow_methods,
+    allow_headers=settings.cors_allow_headers,
 )
 
 # Add exception handlers
