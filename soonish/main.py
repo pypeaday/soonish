@@ -200,6 +200,15 @@ async def startup_event():
     await init_db()
 
 
+@app.get("/settings")
+@login_required
+async def settings(request: Request, current_user=Depends(get_current_user)):
+    """Render the settings page."""
+    return templates.TemplateResponse(
+        "settings.html", {"request": request, "user": current_user}
+    )
+
+
 @app.get("/health")
 async def root():
     """Health check endpoint."""
