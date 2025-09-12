@@ -1,0 +1,4 @@
+The tech stack is python and temporal.io.
+The service is a notification system for events.
+Frontend will be HTMX and Alpine.js
+Every new line of code is a new liability, code additions must be minimal and necessary.
