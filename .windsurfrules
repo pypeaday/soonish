@@ -6,3 +6,7 @@ Before making any changes, ask for review
 Changes should be no longer than 30 lines of code, if a change is larger than that we need to camp out on it for extra time.
 
 use `uv` for everything `uv venv` `uv pip` `uv init --script` etc.
+
+use environment variables for configuration often
+
+assume temporal and apprise-api are running and available at configured URLs
