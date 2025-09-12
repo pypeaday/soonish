@@ -20,8 +20,8 @@ organization_id | uuid
 
 id | uuid
 user_id | uuid
-apprise_config_json | json
-possible_tags | json
+apprise_config_key | string
+possible_tags | string[]
 
 ## Event
 
