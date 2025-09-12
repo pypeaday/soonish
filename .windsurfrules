@@ -2,3 +2,6 @@ The tech stack is python and temporal.io.
 The service is a notification system for events.
 Frontend will be HTMX and Alpine.js
 Every new line of code is a new liability, code additions must be minimal and necessary.
+
+Before making any changes, ask for review
+Changes should be no longer than 30 lines of code, if a change is larger than that we need to camp out on it for extra time.
