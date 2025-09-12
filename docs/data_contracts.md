@@ -140,3 +140,21 @@
     "status": "PENDING"
   }
   ```
+**NotificationRequested Internal Payload:**
+
+```json
+{
+  "event_id": "uuid",
+  "participants": [
+    {
+      "participant_id": "uuid",
+      "config_key": "string",
+      "tags": ["email", "slack"]
+    }
+  ],
+  "message": "Event starts in 30 minutes"
+}
+```
+
+* This is the payload the workflow uses when calling Apprise.
+* No queueing table is required; Temporal ensures delivery.
