@@ -1,4 +1,4 @@
 # Security
 
-- FaseAPI endpoints protected via user authentication
-- FaseAPI admin endpoints are hidden, return 404 if user not admin
+- FastAPI endpoints protected via user authentication
+- FastAPI admin endpoints are hidden, return 404 if user not admin
