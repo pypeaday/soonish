@@ -35,6 +35,8 @@ Soonish is a notification-first service for events, targeting users where they a
 
   * Used for participant-specific notification times (e.g., reminders 1 hour before event)
   * Supports dynamic updates, pause/resume, and overlap policies
+  * Documentation: https://docs.temporal.io/develop/python/schedules
+
 
 ---
 
