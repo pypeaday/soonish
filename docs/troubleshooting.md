@@ -164,3 +164,53 @@ async def send_notification(event_id: int, notification_type: str, ...):
 - Store Apprise URLs encrypted in production
 - Validate notification targets
 - Implement rate limiting for notification activities
+
+## Configuration Issues
+
+### Pydantic Settings Validation Errors
+
+**Problem**: Environment variables not defined in the Settings model cause validation errors.
+
+**Error Example**:
+```
+pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+UNEXPECTED_VAR
+  Extra inputs are not permitted [type=extra_forbidden, input_value='some-value', input_type=str]
+```
+
+**Root Cause**:
+- Pydantic Settings rejects env vars not explicitly defined in the class
+- `.env` or `direnv` may introduce variables your model doesn't expect
+
+**Solutions**:
+1. Define optional fields for expected-but-optional env vars:
+   ```python
+   class Settings(BaseSettings):
+       # Optional fields (example)
+       smtp_server: Optional[str] = None
+       smtp_username: Optional[str] = None
+       smtp_password: Optional[str] = None
+       smtp_from: Optional[str] = None
+
+       class Config:
+           env_file = ".env"
+   ```
+
+2. Or permit/ignore extra env vars:
+   ```python
+   class Settings(BaseSettings):
+       class Config:
+           env_file = ".env"
+           extra = "ignore"  # Ignore extra env vars rather than error
+   ```
+
+3. Inspect current environment for unexpected vars:
+   ```bash
+   env | grep -E "(TEMPORAL|DATABASE|SMTP|SECRET)"
+   direnv status
+   ```
+
+**Prevention**:
+- Keep the Settings model synchronized with documented env variables
+- Use Optional[str] for environment-only, optional variables
+- Document required vs optional variables in `.env.example`

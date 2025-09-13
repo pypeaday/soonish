@@ -43,7 +43,7 @@ class EventParticipant(BaseModel):
     event_id: int
     user_id: Optional[int]  # Nullable for anonymous participants
     email: str
-    notification_tags: str  # Comma-separated tags
+    selected_integration_ids: str  # CSV of Integration IDs (normalize to join table later)
     created_at: datetime
 ```
 
@@ -54,7 +54,6 @@ class Integration(BaseModel):
     user_id: int
     name: str
     apprise_url: str  # Encrypted Apprise-compatible URL
-    tags: str  # Comma-separated notification tags
     is_active: bool = True
     created_at: datetime
 ```
@@ -87,12 +86,12 @@ async def participant_removed(participant_data: Dict[str, Any])
 
 @workflow.signal
 async def event_updated(updated_data: Dict[str, Any])
-    # Notifies ALL participants regardless of tags
+    # Notifies ALL participants
     # Reschedules reminders if start_date changed
 
 @workflow.signal
-async def send_manual_notification(title: str, body: str, tags: List[str])
-    # Sends custom notifications to participants matching tags
+async def send_manual_notification(title: str, body: str, participant_ids: Optional[List[int]] = None)
+    # Sends custom notifications to participants (all when participant_ids omitted)
 ```
 
 ---
@@ -107,19 +106,22 @@ async def send_notification(
     notification_type: str,
     title: str, 
     body: str,
-    target_tags: Optional[List[str]] = None
+    participant_ids: Optional[List[int]] = None,
 ) -> Dict[str, Any]
 ```
 
-#### Tag-Based Routing Logic
-1. **No target_tags specified**: Notify all participants
-2. **target_tags provided**: Only notify participants whose tags intersect with target_tags
-3. **Integration matching**: Only use integrations whose tags intersect with target_tags
-4. **Fallback behavior**: If no matching integrations, participant receives no notification
+#### Delivery Semantics (Integration-first)
+1. **Audience selection**:
+   - If `participant_ids` is provided: restrict audience to those IDs.
+   - Otherwise: audience = all participants of the event.
+2. **Delivery routing per participant**:
+   - If `selected_integration_ids` exist, deliver via those integrations.
+   - Else if SMTP is configured, deliver via Apprise `mailto://` to the participant's email.
+   - Else mark delivery as `pending` for operator review.
 
-#### Supported Integrations
-- **Gotify**: `gotify://server/token/?priority=normal&format=text`
+#### Supported Integrations (via Apprise)
 - **Email**: `mailto://username:password@server/?from=sender&to=recipient`
+- **Slack/Discord/SMS/etc.**: Per Apprise URL formats
 - **Extensible**: Any Apprise-compatible URL
 
 ---
@@ -137,9 +139,17 @@ POST   /api/events/{id}/notify        # Send manual notification
 
 ### Participant Management
 ```http
-POST   /api/events/{id}/subscribe     # Add participant
-DELETE /api/events/{id}/unsubscribe   # Remove participant
-GET    /api/events/{id}/participants  # List participants
+POST   /api/events/{id}/subscribe                     # Add participant (anonymous or authenticated)
+DELETE /api/events/{id}/participants/{participant_id} # Remove participant (owner only)
+POST   /api/unsubscribe                                # One-click unsubscribe (tokenized)
+```
+
+#### Subscribe Request Body (JSON)
+```json
+{
+  "email": "user@example.com",                 
+  "selected_integration_ids": [1, 2]
+}
 ```
 
 ### Integration Management
@@ -166,7 +176,7 @@ POST   /api/auth/logout               # End session
 ### Environment Variables
 ```bash
 # Database
-DATABASE_URL=sqlite:///./soonish.db
+DATABASE_URL=sqlite+aiosqlite:///./soonish.db
 
 # Temporal
 TEMPORAL_URL=ghost:7233
@@ -178,19 +188,26 @@ SECRET_KEY=your-secret-key-here
 
 # Development Defaults
 TEST_EMAIL=test@example.com
-TEST_GOTIFY_URL=gotify://server/token/?priority=normal&format=text&overflow=upstream
+# Optional SMTP for anonymous mailto fallback
+SMTP_SERVER=smtp.example.com
+SMTP_USERNAME=user
+SMTP_PASSWORD=pass
+SMTP_FROM=sender@example.com
 ```
 
 ### Pydantic Configuration
 ```python
 class Settings(BaseSettings):
-    database_url: str = "sqlite:///./soonish.db"
+    database_url: str = "sqlite+aiosqlite:///./soonish.db"
     temporal_url: str = "ghost:7233"
     temporal_namespace: str = "default"
     temporal_task_queue: str = "soonish-task-queue"
     secret_key: str = "dev-secret-key"
     test_email: str = "test@example.com"
-    test_gotify_url: str = ""
+    smtp_server: Optional[str] = None
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from: Optional[str] = None
     
     class Config:
         env_file = ".env"
@@ -258,7 +275,7 @@ python scripts/test_notification.py
 ### Scheduled Reminder Flow
 1. Workflow sleeps until reminder time (1 day, 1 hour before)
 2. Reminder notification activity triggered
-3. All participants with matching tags notified
+3. All participants notified
 4. Delivery status logged for monitoring
 
 ---
