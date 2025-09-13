@@ -135,7 +135,7 @@ sequenceDiagram
 
 ### Tables (Database)
 
-* **User**: id, email, is\_verified, config\_key, organization\_id
+* **User**: id, email, is\_verified, organization\_id
 * **Organization**: id, name, admin\_user\_id
 * **Integrations**: id, user\_id, apprise\_url, tags
 * **Event**: id, owner\_user\_id, name, start\_date, end\_date, public, allowed\_user\_ids
