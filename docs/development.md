@@ -27,7 +27,6 @@ All scripts go in `scripts/` directory.
 
 ### 2. `add_subscriber.py`
 
-* Reads event ID from local state (file/ENV).
 * Creates a new user (if needed).
 * Adds user to `EventParticipants` table with chosen tags.
 * Signals the event’s workflow that a participant was added.
@@ -37,7 +36,6 @@ All scripts go in `scripts/` directory.
 
 ### 3. `update_event.py`
 
-* Reads event ID from local state.
 * Updates event details (e.g., new start date).
 * Persists changes to DB.
 * Signals workflow that event was updated.
@@ -47,8 +45,6 @@ All scripts go in `scripts/` directory.
 
 ## Ground Rules for Agent
 
-* **No FastAPI routes** until these scripts run correctly end-to-end.
-* **No frontend** until the backend state + workflows can be validated through these scripts.
 * Scripts should be **under 50 lines each**, using direct SQLAlchemy or DB calls, and direct Temporal SDK client calls.
 * Each script should print results clearly (so we can visually inspect the behavior).
 * Once these work reliably, convert logic into API routes and services.
