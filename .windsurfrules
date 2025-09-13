@@ -1,4 +1,7 @@
 The tech stack is python and temporal.io.
+The API is FastAPI
+Async everything
+Use SQLite for the datastore but design for postgres migration
 Frontend will be HTMX and Alpine.js
 EVERY NEW LINE OF CODE IS A NEW LIABILITY, CODE ADDITIONS MUST BE MINIMAL AND NECESSARY.
 
