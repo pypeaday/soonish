@@ -14,6 +14,8 @@ use environment variables for configuration often
 
 Temporal server should be configured with TEMPORAL_URL
 
+**TEMPORAL IS RUNNING AT ghost:7233**
+
 Temporal activities should be in src/activities
 Temporal workflows should be in src/workflows
 Temporal worker code should be in src/worker
