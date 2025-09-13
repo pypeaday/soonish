@@ -1,135 +1,179 @@
-# Architecture
+# Soonish Architecture & Design Specification
 
-## Overview
+## 1. **Overview**
 
-Soonish is a notification-first event communication service. The backend is built with **Python** + **Temporal.io**. Frontend starts with **HTMX**, backend API uses **FastAPI**, and data is stored in **SQLite** initially (migratable to Postgres later).
-
-The key design principle: **notifications where users already are**. Event organizers create events, users subscribe, and notifications are sent through their preferred channels via **Apprise**.
+Soonish is a notification-first service for events, targeting users where they already are rather than requiring them to use a specific app. Its primary goal is to allow event organizers to communicate with participants through their preferred channels, leveraging **Apprise** for notifications and **Temporal.io** for workflow orchestration and scheduling.
 
 ---
 
-## Core Components
+## 2. **Core Components**
 
-### 1. **Temporal Workflows**
+### 2.1 Backend
 
-* **EventWorkflow** – represents lifecycle of a single event.
+* **Language:** Python
+* **Framework:** FastAPI for REST endpoints
+* **Workflow Orchestration:** Temporal.io (Python SDK)
+* **Database:** SQLite initially; Postgres for scaling
+* **Notification Library:** Apprise (Python package)
 
-  * Tracks state: created, updated, canceled.
-  * Handles timers for reminders.
-  * Accepts signals for updates (time change, cancellation, etc.).
-  * Calls notification activities.
+### 2.2 Frontend
 
-### 2. **Temporal Activities**
+* **Technology:** HTMX for initial prototype
+* **UI Features:** Event creation, participant management, integration configuration
 
-* **send\_notifications** – wraps Apprise notification logic.
+### 2.3 Temporal Components
 
-  * Query database for participants + tags.
-  * Build `Apprise()` object with user’s integration URLs.
-  * Call `.notify()`.
-  * Raise exception on failure to trigger Temporal retries.
-* All retries, logging, and idempotency handled via Temporal SDK.
+* **EventWorkflows:** Represent lifecycle of events
 
-### 3. **FastAPI Backend**
+  * Tracks status (created, updated, canceled)
+  * Handles participant subscriptions
+  * Receives signals for updates and triggers notification schedules
+* **Activities:**
 
-* REST API for event creation, updates, participant subscriptions.
-* Endpoints for managing user integrations.
-* Auth-protected + rate-limited.
+  * `send_notifications`: Constructs Apprise object, sends notifications, raises exceptions on failure
+* **Schedules:**
 
-### 4. **Database (SQLite → Postgres)**
-
-* Tables:
-
-  * **Organization**
-  * **User** (with `config_key` as deterministic hash)
-  * **Integrations** (stores Apprise URLs + tags)
-  * **EventDetails**
-  * **EventParticipants**
-  * **EventUpdateContent**
-* DB is source of truth for user integrations and event state.
-
-### 5. **Apprise Integration**
-
-* Soonish stores **Apprise URLs** and associated tags per user.
-* No persistent Apprise server config; config is dynamically built per notification.
-* Notification call = build Apprise object in-memory + call `.notify()`.
+  * Used for participant-specific notification times (e.g., reminders 1 hour before event)
+  * Supports dynamic updates, pause/resume, and overlap policies
 
 ---
 
-# Domain Events
+## 3. **Data Model**
 
-| Event                   | Trigger                        | Workflow Action                            |
-| ----------------------- | ------------------------------ | ------------------------------------------ |
-| EventCreated            | User creates event             | Start new `EventWorkflow` instance         |
-| EventUpdated            | Organizer changes details      | Send signal to workflow + update DB        |
-| EventCanceled           | Organizer cancels event        | Workflow issues cancellation notifications |
-| ReminderDue             | Workflow timer fires           | Calls `send_notifications` activity        |
-| ParticipantSubscribed   | User subscribes                | Add participant to DB + signal workflow    |
-| ParticipantUnsubscribed | User unsubscribes              | Remove participant from DB                 |
-| NotificationRequested   | Any event needing notification | Calls `send_notifications` activity        |
+### 3.1 User
 
----
+* `id: uuid`
+* `email: string`
+* `is_verified: bool`
+* `verify_sent_at: datetime`
+* `organization_id: uuid`
 
-# Data Contracts (Updated)
+### 3.2 Organization
 
-## **User**
+* `id: uuid`
+* `name: string`
+* `owner_user_id: uuid`
+* `admin_user_ids: uuid[]`
+* `user_ids: uuid[]`
 
-```yaml
-id: uuid
-email: string
-is_verified: bool
-config_key: string  # deterministic hash of email + secret salt
-verify_sent_at: datetime
-organization_id: uuid
-```
+### 3.3 Integrations
 
-## **Integrations**
+* `id: uuid`
+* `user_id: uuid`
+* `apprise_url: string` (e.g., `mailto://user:pass@gmail.com`)
+* `tags: list[string]` (user-defined)
+* `last_synced_at: datetime`
 
-```yaml
-id: uuid
-user_id: uuid
-apprise_url: string  # e.g. "mailto://user:pass@gmail.com"
-tags: list[string]  # user-defined tags for grouping
-```
+### 3.4 Event
 
-## **EventParticipants**
+* `id: uuid`
+* `owner_user_id: uuid`
+* `event_details: EventDetails`
+* `status: string`
+* `public: bool`
+* `allowed_user_ids: uuid[]`
 
-```yaml
-id: uuid
-event_id: uuid
-user_id: uuid
-notification_tags: list[string]  # must match user’s integration tags
-custom_frequency: enum["EVERY", "BEFORE"]
-custom_time_delta_seconds: int
-```
+### 3.5 EventDetails
 
-## **Notification Payload (to Temporal Activity)**
+* `event_id: uuid`
+* `name: string`
+* `start_date: datetime`
+* `end_date: datetime`
+* `extra_details: json`
 
-```yaml
-title: string
-body: string
-event_id: uuid
-participant_ids: list[uuid]
-```
+### 3.6 EventParticipants
+
+* `id: uuid`
+* `event_id: uuid`
+* `user_id: uuid`
+* `notification_tags: list[string]`
+* `custom_frequency: enum["EVERY", "BEFORE"]`
+* `custom_time_delta_seconds: int`
 
 ---
 
-# Notification Flow
+## 4. **REST API Specification**
 
-1. Workflow (Event or Reminder) triggers **NotificationRequested**.
-2. Temporal schedules `send_notifications` activity.
-3. Activity:
+### Users
 
-   * Loads participant list from DB.
-   * For each participant, loads integration URLs filtered by matching tags.
-   * Builds Apprise object, calls `.notify()`.
-   * Raises exception on failure → Temporal retries with backoff.
-4. Workflow history + optional `NotificationLog` table give observability.
+* `POST /users`: Create user
+* `GET /users/{id}`: Fetch user info
+
+### Integrations
+
+* `POST /integrations`: Add or update user notification integrations
+* `GET /integrations/{user_id}`: List user integrations
+
+### Events
+
+* `POST /events`: Create event
+* `POST /events/{event_id}/subscribe`: Subscribe participant
+* `POST /events/{event_id}/update`: Update event
+* `POST /events/{event_id}/unsubscribe`: Remove participant
 
 ---
 
-This documentation now explicitly clarifies:
+## 5. **Notification Flow**
 
-* Apprise integration is fully dynamic (no server config sync).
-* Notification logic lives inside Temporal activities with retry policy.
-* DB tables are authoritative for integrations + tags.
-* No queue or custom retry logic is needed outside Temporal.
+1. **Trigger Event:** Event update, reminder, or participant query triggers `NotificationRequested`.
+2. **Temporal Schedule:** Workflow schedules notification activity at user-specific times.
+3. **Activity Execution (`send_notifications`):**
+
+   * Load participant integrations for the specified tags.
+   * Build in-memory Apprise object.
+   * Call `.notify()` to send messages.
+   * Raise exception on failure; Temporal retries automatically.
+4. **Logging & Observability:** Workflow history provides audit log; optional `NotificationLog` table captures success/failure per participant.
+
+---
+
+## 6. **Temporal Schedule Integration**
+
+* **Purpose:** Replace custom scheduling for reminders/participant-specific notification timing.
+* **Capabilities:**
+
+  * Schedule notifications at fixed times or relative to events (e.g., `custom_time_delta_seconds` before start)
+  * Supports dynamic updates (pause/resume/change)
+  * Handles overlapping schedules using policies like `Skip`, `BufferOne`, or `TerminateOther`
+* **Management:** Each schedule is tied to a workflow instance; updates are propagated when participant preferences or event details change.
+
+---
+
+## 7. **Feature Summary**
+
+* **Event Management**
+
+  * Create, update, cancel events
+  * Public or private visibility
+* **Participant Management**
+
+  * Subscribe/unsubscribe
+  * Tag-based notification preferences
+  * Custom notification frequency/delta
+* **Notification Backend**
+
+  * Apprise library-based notifications
+  * Tag-driven delivery to multiple channels
+  * Retry and logging via Temporal
+* **Schedules & Timing**
+
+  * Temporal schedules for precise, dynamic timing
+  * Handles backfills and missed notifications
+* **Security**
+
+  * API auth & rate-limiting
+  * User verification
+* **Scalability**
+
+  * Start with SQLite; migrate to Postgres
+  * Temporal ensures reliability and retry logic
+
+---
+
+## 8. **Design Principles**
+
+1. **Minimal backend orchestration** — leverage Temporal for retry, logging, and scheduling
+2. **Dynamic Apprise config** — DB-driven, no server-side config required
+3. **User-centric notifications** — users control channels via tags
+4. **Extensibility** — support for multiple markets (events, volunteer coordination, IT notifications)
+5. **Observability and auditability** — workflow history + optional DB logs
