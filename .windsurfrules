@@ -12,4 +12,8 @@ use `uv` for everything `uv venv` `uv pip` `uv init --script` etc.
 
 use environment variables for configuration often
 
-assume temporal and apprise-api are running and available at configured URLs
+Temporal server should be configured with TEMPORAL_URL
+
+Temporal activities should be in src/activities
+Temporal workflows should be in src/workflows
+Temporal worker code should be in src/worker
