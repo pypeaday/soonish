@@ -15,6 +15,9 @@ Soonish is a notification-first service for events, targeting users where they a
 * **Workflow Orchestration:** Temporal.io (Python SDK)
 * **Database:** SQLite initially; Postgres for scaling
 * **Notification Library:** Apprise (Python package)
+* **Authentication:** JWT
+* **Rate Limiting:** 
+* **Configuration:** Pydantic with BaseSettings where applicable
 
 ### 2.2 Frontend
 
