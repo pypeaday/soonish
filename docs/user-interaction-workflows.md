@@ -12,7 +12,7 @@ This document defines every possible user interaction workflow in the Soonish no
 - **Definition**: Users without accounts who interact via public event links
 - **Capabilities**: View public events, subscribe with email only
 - **Limitations**: No notification preferences, no integration management
-- **Data Storage**: EventParticipant record with `user_id = NULL`
+- **Data Storage**: Subscription record with `user_id = NULL`
 
 ### 2. Authenticated Users
 - **Definition**: Users with verified accounts and active sessions
@@ -22,7 +22,7 @@ This document defines every possible user interaction workflow in the Soonish no
 ### 3. Event Organizers
 - **Definition**: Authenticated users who own events
 - **Capabilities**: All authenticated user features plus event management
-- **Responsibilities**: Event lifecycle management, participant communication
+- **Responsibilities**: Event lifecycle management, subscriber communication
 
 ---
 
@@ -48,24 +48,33 @@ Conventions:
 - temporal_workflow_id: varchar unique not null
 - is_public: bool default true
 - created_at: datetime default now
-- Relationships: `owner` (N:1 User), `participants` (1:N EventParticipant)
+- Relationships: `owner` (N:1 User), `subscriptions` (1:N Subscription)
 
-### event_participants
+### subscriptions
 - id: int PK
 - event_id: int FK -> events.id, not null
-- user_id: int FK -> users.id, nullable (anonymous participants)
-- email: varchar not null
-- selected_integration_ids: varchar default "" (CSV of Integration.id)  # intent: normalize to join table later
+- user_id: int FK -> users.id, nullable (anonymous subscribers)
+- integration_id: int FK -> integrations.id, not null
 - created_at: datetime default now
-- Constraints (intent): unique(event_id, email) to prevent duplicate subscriptions
+- Constraints (intent): unique(event_id, user_id, integration_id)
+
+### event_updates
+- id: int PK
+- event_id: int FK -> events.id, not null
+- category: varchar not null  # e.g., general, schedule_change
+- title: varchar not null
+- body: text not null
+- created_at: datetime default now
 
 ### integrations
 - id: int PK
 - user_id: int FK -> users.id, not null
 - name: varchar not null
 - apprise_url: text not null (intent: encrypted at rest in production)
+- tag: varchar not null (case-insensitive, per-user; one tag per row)
 - is_active: bool default true
 - created_at: datetime default now
+- Constraints: UNIQUE(user_id, apprise_url, tag)
 
 ---
 
@@ -73,7 +82,7 @@ Conventions:
 
 - Assumptions:
   - API datetimes are ISO8601 and UTC (or include explicit timezone offset).
-  - Email is required for all participants; anonymous participants do not have accounts.
+  - Email is required for all subscribers; anonymous subscribers do not have accounts.
   - Apprise supports all needed channels; credentials/tokens are embedded in user-provided Apprise URLs.
 - Constraints:
   - Async-first implementation (FastAPI + Temporal).
@@ -85,7 +94,7 @@ Conventions:
 - Recommended baseline: One `EventWorkflow` per event.
 - Rationale:
   - Simple orchestration, minimal workflow count, clear ownership of event lifecycle.
-  - Signals (`participant_added`, `participant_removed`, `event_updated`, `send_manual_notification`) cover participant/event mutations.
+  - Signals (`participant_added`, `participant_removed`, `event_updated`, `send_manual_notification`) cover subscription/event mutations.
 - When to introduce `ParticipantWorkflow` (future):
   - Individualized schedules (e.g., user-specific reminder offsets), daily digests, per-subscriber SLAs.
   - Need for durable participant-specific state and retry isolation.
@@ -107,14 +116,14 @@ Conventions:
   - Event creation starts a Temporal workflow with reminder timers.
   - Adding a participant signals `participant_added` and triggers a welcome notification.
   - Reminders fire at T-1d and T-1h relative to start_date (timezone-aware).
-  - Manual notifications deliver to all participants or to specific `participant_ids`.
+  - Manual notifications deliver to all subscriptions or to specific `subscription_ids`.
   - Integrations persist Apprise URLs; deliveries occur via Apprise.
   - Configurable via environment variables.
 
 ## Idempotency & Concurrency Rules
 
 - Workflow start idempotency via unique `temporal_workflow_id` per event.
-- Signals should be safe if delivered more than once; enforce `unique(event_id, email)` for participants to avoid duplicates.
+- Signals should be safe if delivered more than once; enforce `unique(event_id, email)` for subscriptions to avoid duplicates.
 - Activities are at-least-once; notification delivery must tolerate retries (acceptable duplicates or dedup by downstream channel).
 - Reminder rescheduling: on start_date change, cancel old timers and schedule new ones atomically to avoid duplicate reminders.
 - Database operations in activities should be transactional where applicable.
@@ -125,13 +134,13 @@ Conventions:
   - View event details; subscribe with email (HTMX POST to `/api/events/{id}/subscribe`).
   - Success state swaps in-place confirmation; unsubscribe link provided via email.
 - Event Page (authenticated):
-  - Show integration multi-select (user's active integrations); HTMX POST includes `selected_integration_ids` on subscribe.
+  - Show integration multi-select and tag selection; HTMX POST includes `integration_ids` and/or `tags` on subscribe.
 - Create Event (authenticated):
   - Form posts to `POST /api/events`; on success, redirect to event page with workflow status widget.
 - Integrations (authenticated):
   - List/add/edit integrations; HTMX partials for activation toggle.
 - Organizer Dashboard:
-  - Participants list, manual notification composer, and workflow health indicators.
+  - Subscriptions list, manual notification composer, and workflow health indicators.
 
 ## API Surface (Intent)
 
@@ -143,12 +152,12 @@ Conventions:
   - `POST /api/events`: Create event (auth required)
   - `GET /api/events/{id}`: Get event (respect visibility)
   - `PATCH /api/events/{id}`: Update event (owner only)
-  - `POST /api/events/{id}/notify`: Send manual notification (owner; optional participant_ids)
+  - `POST /api/events/{id}/notify`: Send manual notification (owner; optional subscription_ids)
   - `GET /api/events/{id}/workflow/status`: Introspect workflow health (ops)
 
 - **Subscriptions**
   - `POST /api/events/{id}/subscribe`: Subscribe (anonymous or authenticated)
-  - `DELETE /api/events/{id}/participants/{participant_id}`: Remove participant (owner)
+  - `DELETE /api/events/{id}/subscriptions/{subscription_id}`: Remove subscription (owner)
   - `POST /api/unsubscribe`: One-click unsubscribe (tokenized)
 
 - **Integrations**
@@ -244,7 +253,7 @@ Temporal Workflows:
 - EventWorkflow (30-day lifecycle)
   - Sends creation notification
   - Schedules automatic reminders
-  - Handles participant signals
+  - Handles subscription-related signals
   - Manages event lifecycle
 
 API Endpoints:
@@ -256,25 +265,25 @@ API Endpoints:
 ```
 EventWorkflow Responsibilities:
 1. Send organizer creation notification
-2. Schedule 1-day reminder (concurrent task)
-3. Schedule 1-hour reminder (concurrent task)
-4. Listen for signals indefinitely:
-   - participant_added
-   - participant_removed
-   - event_updated
-   - send_manual_notification
-5. Handle workflow timeout (30 days)
+2. Ensure Temporal Schedules exist for 1-day and 1-hour reminders (triggering ReminderWorkflow)
+3. Listen for signals indefinitely:
+    - participant_added
+    - participant_removed
+    - event_updated
+    - send_manual_notification
+4. Handle workflow timeout (30 days)
 
-Concurrent Task Architecture:
+Schedule Architecture:
 - Main thread: Signal handling loop
-- Background task 1: 1-day reminder scheduler
-- Background task 2: 1-hour reminder scheduler
-- All tasks run until workflow completion/timeout
+- Reminder schedules: managed via Temporal Schedules
+- No long-lived workflow.sleep reminder tasks
+- Cleanup schedules on event completion/cancellation
 ```
 
 ## Workflow 3: Event Subscription Workflows
 
 ### 3.1 Anonymous User Subscription
+Note: Under the per-subscription integration_id model, anonymous subscriptions are not supported; this flow is pending redesign.
 ```
 User Intent: Subscribe to public event without creating account
 
@@ -288,21 +297,19 @@ Flow:
 3. User provides email address
 4. System validates email format
 5. System checks for existing subscription
-6. If not exists, creates EventParticipant record
+6. If not exists, creates Subscription record
 7. System signals EventWorkflow with participant_added
 8. EventWorkflow sends welcome notification to email
 9. User receives subscription confirmation
 
 Database Changes:
-- INSERT EventParticipant(event_id, user_id=NULL, email)
+- Pending redesign for anonymous flow under per-integration subscription model
 
 Temporal Signals:
-- EventWorkflow.participant_added({email})
+- Pending redesign for anonymous flow under per-integration subscription model
 
 Notification Flow:
-- Welcome notification sent to provided email
-- Uses default notification method (email fallback)
-- No integration preferences available
+- Pending redesign for anonymous flow under per-integration subscription model
 ```
 
 ### 3.2 Authenticated User Subscription
@@ -316,34 +323,30 @@ Prerequisites:
 Flow:
 1. User visits event page (authenticated)
 2. System displays event details + notification preferences
-3. User selects integrations from available options
-4. System creates EventParticipant record with user_id
+3. User selects one integration from their available integrations
+4. System creates Subscription record with user_id and integration_id
 5. System signals EventWorkflow with participant_added
 6. EventWorkflow triggers notification activity
-7. Notification activity queries user's integrations
-8. System sends welcome notification via user's preferred channels
+7. Notification activity delivers via the subscription's integration
 
 Database Changes:
-- INSERT EventParticipant(event_id, user_id, email, selected_integration_ids)
+- INSERT Subscription(event_id, user_id, integration_id)
 
 Temporal Signals:
-- EventWorkflow.participant_added({user_id, email, selected_integration_ids})
+- EventWorkflow.participant_added({subscription_id, user_id, integration_id})
 
 Notification Flow:
-- If selected integrations provided, deliver via those integrations
-- Else if SMTP is configured, deliver via Apprise `mailto://`
-- Else mark delivery as `pending`
+- Deliver via the selected integration
+- If integration is inactive or missing, mark delivery as `pending`
 ```
 
 ### 3.3 Subscription Notification Routing Logic
 ```
-Notification Routing Algorithm (Integration-first):
-1. Load participants (or restrict to `participant_ids` if provided by the caller).
-2. For each participant:
-   a. Determine endpoints:
-      - If `selected_integration_ids` exists, deliver via those integrations.
-      - Else if SMTP is configured, deliver via Apprise `mailto://` to the participant's email.
-      - Else mark delivery as `pending` for operator review.
+Notification Routing Algorithm (Per-subscription integration):
+1. Load subscriptions (or restrict to `subscription_ids` if provided by the caller).
+2. For each subscription:
+   a. Load the associated integration and ensure it is active
+   b. Deliver via the integration's apprise_url; if inactive/missing, mark pending
 3. Execute notification delivery via Apprise and collect per-target results.
 ```
 
@@ -417,9 +420,9 @@ Flow:
 2. System validates changes
 3. System updates Event record
 4. System signals EventWorkflow with event_updated
-5. EventWorkflow notifies ALL participants
+5. EventWorkflow notifies ALL subscribers
 6. If start_date changed, reschedules reminders
-7. Participants receive update notification
+7. Subscribers receive update notification
 
 Database Changes:
 - UPDATE Event SET ... WHERE id = ? AND owner_user_id = ?
@@ -428,14 +431,14 @@ Temporal Signals:
 - EventWorkflow.event_updated({updated_fields})
 
 Special Rules:
-- Event updates notify ALL participants
+- Event updates notify ALL subscribers
 - Start date changes trigger reminder rescheduling
 - Organizer cannot modify past events
 ```
 
 ### 5.2 Manual Notification Workflow
 ```
-User Intent: Send custom message to event participants
+User Intent: Send custom message to event subscribers
 
 Prerequisites:
 - User must be event organizer
@@ -446,19 +449,19 @@ Flow:
 2. User provides:
    - Notification title
    - Message body
-   - Optional: `participant_ids` to target specific recipients (defaults to all participants)
+   - Optional: `subscription_ids` to target specific recipients (defaults to all subscriptions)
 3. System validates input
 4. System signals EventWorkflow with send_manual_notification
 5. EventWorkflow triggers notification activity
-6. Notification activity targets selected participants (or all)
-7. Selected participants receive custom notification
+6. Notification activity targets selected subscriptions (or all)
+7. Selected subscriptions receive custom notification
 
 Temporal Signals:
-- EventWorkflow.send_manual_notification(title, body, participant_ids)
+- EventWorkflow.send_manual_notification(title, body, subscription_ids)
 
 Selection Rules:
-- If `participant_ids` provided: only those participants
-- If none provided: all participants
+- If `subscription_ids` provided: only those subscriptions
+- If none provided: all subscriptions
 ```
 
 ## Workflow 6: Automated Reminder System
@@ -470,28 +473,23 @@ Reminder Types:
 - 1-hour before event (reminder_1hour)
 
 Implementation:
-- Concurrent background tasks in EventWorkflow
-- Each reminder runs independently
-- Timezone-aware datetime calculations
-- Automatic cleanup after event completion
+- Temporal Schedules maintained by EventWorkflow
+- Each schedule triggers a ReminderWorkflow instance
+- Timezone-aware scheduling
+- Automatic cleanup/cancellation after event completion or date change
 
 Flow per Reminder:
-1. Calculate reminder time (start_date - offset)
-2. If reminder_time > now, schedule task
-3. await workflow.sleep(reminder_time - now)
-4. Execute send_notification activity
-5. Send reminder to each participant via selected integrations, else email fallback
+1. Temporal Schedule triggers ReminderWorkflow(kind)
+2. ReminderWorkflow executes send_notification activity
+3. Deliver reminder via the subscription's integration
 ```
 
 ### 6.2 Reminder Notification Routing
 ```
 Routing Logic:
-1. Query all EventParticipants for event
-2. For each participant:
-   a. If authenticated: Use selected integrations for this event
-   b. If no selections or anonymous and SMTP configured: email delivery
-3. Send reminder notification
-4. Log delivery results
+1. Query all Subscriptions for event
+2. For each subscription, deliver via its integration's apprise_url (if inactive/missing, mark pending)
+3. Log delivery results
 
 Content Generation:
 - 1-day reminder: "Don't forget! [Event] is tomorrow"
@@ -499,54 +497,54 @@ Content Generation:
 - Include event details and organizer contact
 ```
 
-## Workflow 7: Participant Management
+## Workflow 7: Subscription Management
 
-### 7.1 Participant Removal
+### 7.1 Subscription Removal
 ```
-User Intent: Remove participant from event
+User Intent: Remove subscription from event
 
 Initiator Options:
-- Event organizer removes participant
-- Participant self-unsubscribes
+- Event organizer removes subscription
+- Subscriber self-unsubscribes
 
 Flow (Organizer Removal):
-1. Organizer selects participant to remove
+1. Organizer selects subscription to remove
 2. System validates organizer permissions
-3. System deletes EventParticipant record
+3. System deletes Subscription record
 4. System signals EventWorkflow with participant_removed
-5. EventWorkflow updates participant count
-6. Optional: Notify remaining participants
+5. EventWorkflow updates subscription count
+6. Optional: Notify remaining subscribers
 
 Flow (Self Unsubscribe):
-1. Participant clicks unsubscribe link
+1. Subscriber clicks unsubscribe link
 2. System validates unsubscribe token
-3. System deletes EventParticipant record
+3. System deletes Subscription record
 4. System signals EventWorkflow with participant_removed
 5. System sends unsubscribe confirmation
 
 Database Changes:
-- DELETE EventParticipant WHERE id = ?
+- DELETE Subscription WHERE id = ?
 
 Temporal Signals:
 - EventWorkflow.participant_removed({participant_data})
 ```
 
-### 7.2 Participant Preference Updates
+### 7.2 Subscription Changes
 ```
-User Intent: Modify notification preferences for specific event
+User Intent: Modify notification preferences for specific event by adding/removing subscriptions per integration
 
 Prerequisites:
-- User must be authenticated participant
+- User must be authenticated
 
 Flow:
 1. User accesses event subscription settings
-2. User modifies selected integrations for this event
-3. System validates that integrations belong to the user and are active
-4. System updates EventParticipant.selected_integration_ids
-5. Changes take effect for future notifications
+2. User adds or removes subscriptions for specific integrations (one integration per subscription)
+3. System validates that each integration belongs to the user and is active
+4. Changes take effect for future notifications
 
 Database Changes:
-- UPDATE EventParticipant SET selected_integration_ids = ? WHERE id = ?
+- INSERT Subscription(event_id, user_id, integration_id)
+- DELETE Subscription WHERE event_id = ? AND user_id = ? AND integration_id = ?
 
 Validation:
 - Ensure each integration ID belongs to the user
@@ -596,7 +594,7 @@ Data Collection:
  - Secret key: `SECRET_KEY` (sessions/tokens)
  - Future email fallback (intent): SMTP settings for anonymous delivery via Apprise `mailto://`
    - `SMTP_SERVER`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`
-   - Used to generate a `mailto://` Apprise URL for anonymous participants when no user integrations exist.
+   - Used to generate a `mailto://` Apprise URL for anonymous subscribers when no user integrations exist.
 
 ---
 
@@ -618,6 +616,11 @@ Data Collection:
    - Lifecycle: 24 hours (configurable)
    - Responsibilities: Session timeout, cleanup
 
+4. **ReminderWorkflow** (per scheduled reminder)
+   - Lifecycle: short-lived
+   - Triggered by: Temporal Schedules (T-1d, T-1h)
+   - Responsibilities: Execute reminder notification for an event
+
 ### Workflow Communication Patterns
 
 - **Parent-Child**: UserWorkflow spawns SessionWorkflows
@@ -637,12 +640,12 @@ Data Collection:
 - Workflow `EventWorkflow.run(event_id: int, event_data: dict) -> str`
   - `event_data` minimally includes: `name: str`, `start_date: ISO8601 str`, `is_public: bool`.
  - Signals
-  - `participant_added(participant: { email: str, user_id?: int, selected_integration_ids?: list[int] })`
+  - `participant_added(participant: { subscription_id: int, user_id?: int, integration_id: int })`
   - `participant_removed(participant: { email: str })`
   - `event_updated(updated: { start_date?: ISO8601 str, name?: str, ... })`
-  - `send_manual_notification(title: str, body: str, participant_ids?: list[int])`
+  - `send_manual_notification(title: str, body: str, subscription_ids?: list[int])`
  - Activities
-  - `send_notification(event_id: int, notification_type: str, title: str, body: str, participant_ids?: list[int]) -> { delivered: int, failed: int, results: list }`
+  - `send_notification(event_id: int, notification_type: str, title: str, body: str, subscription_ids?: list[int]) -> { delivered: int, failed: int, results: list }`
 
 ---
 

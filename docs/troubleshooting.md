@@ -30,7 +30,7 @@ from a workflow, mark the import as pass through.
    # ✅ Do this instead
    await workflow.execute_activity(
        "send_notification",
-       args=[event_id, "creation", title, body, tags],
+       args=[event_id, "creation", title, body],
        schedule_to_close_timeout=timedelta(minutes=5)
    )
    ```
@@ -125,7 +125,7 @@ async def participant_added(self, participant_data: Dict[str, Any]):
     # Always use string-based activity calls
     await workflow.execute_activity(
         "send_notification",
-        args=[self.event_id, "participant_added", title, body, tags],
+        args=[self.event_id, "participant_added", title, body],
         schedule_to_close_timeout=timedelta(minutes=5),
         retry_policy=RetryPolicy(maximum_attempts=3)
     )

@@ -5,7 +5,6 @@ This plan outlines a step-by-step, incremental rebuild of the Soonish notificati
 ## Guiding Principles
 - Async-first: FastAPI + Temporal.io + async SQLAlchemy.
 - Apprise-first delivery via user-managed Apprise URLs stored in `integrations`.
-- One EventWorkflow per event (no per-subscriber workflow in MVP).
 - SQLite locally, clean migration path to Postgres.
 - HTMX + Alpine.js for minimal, reactive UI.
 - Environment-driven configuration.
@@ -13,50 +12,44 @@ This plan outlines a step-by-step, incremental rebuild of the Soonish notificati
 ## Architecture Overview
 ```mermaid
 flowchart LR
-    subgraph Client[Browser UI (HTMX + Alpine)]
+    subgraph ClientUI [Browser UI]
+        Client
     end
+
     Client -->|HTTP| API[FastAPI]
     API <--> DB[(SQLite / Postgres)]
     API <--> TC[Temporal Client]
-    subgraph Temporal[Temporal Server]
-      WQ[Task Queue]
+
+    subgraph TemporalServer [Temporal Server]
+        WQ[Task Queue]
     end
+
     TC <--> WQ
-    subgraph Worker[Temporal Worker]
-      WF[EventWorkflow]
-      ACT[Activities: send_notification]
+
+    subgraph TemporalWorker [Temporal Worker]
+        WF[EventWorkflow]
+        ACT[Activities: send_notification]
     end
+
     WQ <--> WF
     WF --> ACT
     ACT --> DB
     ACT --> AP[Apprise]
-    AP --> CH[Channels (email, sms, discord, slack, ...)]
-```
 
----
+    subgraph Notify [Notification System]
+        AP
+        CH[Channels]
+    end
 
-## Phase 0 — Repository Bootstrap
-- Goals
-  - Initialize project with `uv`, `.env`, and base folders.
-- Deliverables
-  - `pyproject.toml`, `src/` layout, `docs/`, `tests/`, `.env.example`.
-- Acceptance
-  - `uv run` boots a placeholder FastAPI app returning health OK.
+    AP --> CH
 
-```mermaid
-sequenceDiagram
-  participant Dev
-  participant Repo
-  Dev->>Repo: Initialize project with uv
-  Dev->>Repo: Add base FastAPI app + health endpoint
-  Dev->>Repo: Commit baseline
 ```
 
 ---
 
 ## Phase 1 — Data Model & Database
 - Goals
-  - Implement data models: `users`, `events`, `event_participants`, `integrations`.
+  - Implement data models: `users`, `events`, `subscriptions`, `event_updates`, `integrations`.
 - Deliverables
   - SQLAlchemy models + async DB session utilities.
   - DB init script and migration notes.
@@ -81,12 +74,11 @@ classDiagram
     bool is_public
     datetime created_at
   }
-  class EventParticipant {
+  class Subscription {
     int id
     int event_id
     int user_id
-    string email
-    string selected_integration_ids
+    int integration_id
     datetime created_at
   }
   class Integration {
@@ -94,11 +86,12 @@ classDiagram
     int user_id
     string name
     text apprise_url
+    string tag
     bool is_active
     datetime created_at
   }
   User "1" --o "*" Event: owns
-  Event "1" --o "*" EventParticipant: has
+  Event "1" --o "*" Subscription: has
   User "1" --o "*" Integration: has
 ```
 
@@ -180,7 +173,7 @@ sequenceDiagram
 - Deliverables
   - `POST /api/events/{id}/subscribe` handling both cases.
 - Acceptance
-  - Participant record created (stores `selected_integration_ids` when provided).
+  - Subscription created; selectors stored for provided `integration_ids` and/or `tags`.
   - Workflow signaled with `participant_added`.
 
 ```mermaid
@@ -191,23 +184,23 @@ sequenceDiagram
   participant DB
   participant TC as Temporal Client
   participant W as Worker
-  U->>UI: Submit Subscribe form (email, selected integrations)
-  UI->>API: POST /api/events/{id}/subscribe (selected_integration_ids)
-  API->>DB: INSERT EventParticipant(event_id, user_id?, email, selected_integration_ids)
+  U->>UI: Submit Subscribe form (email, integration_ids, tags)
+  UI->>API: POST /api/events/{id}/subscribe (integration_ids, tags)
+  API->>DB: INSERT Subscription(event_id, user_id?, email); INSERT SubscriptionSelector rows
   API->>TC: signal(event_workflow_id, participant_added, {email})
   TC->>W: Deliver signal
 ```
 
 ---
 
-## Phase 6 — Notification Activity (Integration-first Routing)
+## Phase 6 — Notification Activity (Selector Expansion Routing)
 - Goals
-  - Implement `send_notification` activity reading participants and delivering via their selected integrations.
+  - Implement `send_notification` activity reading subscriptions and resolving selectors (integration_ids and tags).
   - Fallback intent: SMTP mailto if no endpoints remain; else mark pending.
 - Deliverables
   - Activity implementation and structured delivery results.
 - Acceptance
-  - Manual notifications deliver to selected participants (or all) via selected integrations or email fallback.
+  - Manual notifications deliver to selected subscriptions (or all) via resolved channels or email fallback.
 
 ```mermaid
 sequenceDiagram
@@ -216,8 +209,8 @@ sequenceDiagram
   participant DB
   participant AP as Apprise
   participant CH as Channels
-  WF->>ACT: Execute(title, body, participant_ids?)
-  ACT->>DB: Load event + participants (+user.integrations)
+  WF->>ACT: Execute(title, body, subscription_ids?)
+  ACT->>DB: Load event + subscriptions (+selectors + user.integrations)
   ACT->>AP: Notify via Apprise URLs (selected integrations or mailto fallback)
   AP->>CH: Deliver to channels
   ACT-->>WF: {delivered, failed, results[]}
@@ -226,33 +219,26 @@ sequenceDiagram
 ---
 
 ## Phase 7 — Reminder Scheduling (T-1d, T-1h)
+
 - Goals
-  - Schedule two timers relative to start_date; deliver reminders via activity.
+  - Utilize Temporal schedules and delay-start features to schedule reminders as ReminderWorkflows
 - Deliverables
-  - Concurrent tasks in workflow; timezone-aware.
+  - ReminderWorkflow implementation
 - Acceptance
   - Reminders fire at correct times; visible in logs.
-
-```mermaid
-flowchart LR
-  Start[Workflow start]
-  Start --> Parse[Parse start_date]
-  Parse --> T1[Schedule T-1d]
-  Parse --> T2[Schedule T-1h]
-  T1 -->|sleep until| R1[send_notification(reminder_1day)]
-  T2 -->|sleep until| R2[send_notification(reminder_1hour)]
-```
+  - Time change in event results in appropriate updates of reminders
 
 ---
 
 ## Phase 8 — Manual Notifications (Organizer)
 - Goals
-  - Organizer sends manual notifications to all or by tags.
+  - Organizer sends manual notifications to all participants according to their preferences
+  - Updates assigned a category that users can choose to get notified about or opt-out of
 - Deliverables
   - `POST /api/events/{id}/notify` -> signal `send_manual_notification`.
 - Acceptance
-  - Notifications delivered to participants filtered by audience/message tags or explicit participant IDs.
-
+  - Notifications delivered to participants based on their individual preferences
+  
 ```mermaid
 sequenceDiagram
   participant Org as Organizer
@@ -260,7 +246,7 @@ sequenceDiagram
   participant TC as Temporal Client
   participant W as Worker
   participant WF as EventWorkflow
-  Org->>API: POST /api/events/{id}/notify (title, body, audience_tags?, message_tags?, participant_ids?)
+  Org->>API: POST /api/events/{id}/notify (title, body, audience_tags?, message_tags?, subscription_ids?)
   API->>TC: signal(workflow_id, send_manual_notification,...)
   TC->>W: Deliver signal
   W->>WF: Handle signal -> activity send_notification
