@@ -5,57 +5,66 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Soonish</title>
   <style>
-    body { margin:0; padding:0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background:#fff; color:#333; }
-    .header { text-align:center; padding: 60px 20px; }
-    .header h1 { font-size: 3rem; margin:0; }
-    .header p { font-size:1.25rem; margin-top:10px; color:#666; }
-
-    .features { max-width: 800px; margin: 0 auto; display: flex; flex-wrap: wrap; justify-content: center; padding:40px 20px; }
-    .feature { flex: 1 1 250px; margin: 20px; text-align: center; }
-    .feature img { width:100px; height:100px; object-fit:contain; margin-bottom:15px; }
-    .feature h3 { font-size:1.4rem; margin-bottom:8px; }
-    .feature p { font-size:1rem; color:#555; }
-
-    .call-to-action { text-align:center; padding: 40px 20px; }
-    .btn { background-color:#007BFF; color:white; border:none; padding:12px 24px; font-size:1rem; border-radius:4px; text-decoration:none; }
-    .btn:hover { background-color:#0056b3; }
-
-    .footer { text-align:center; font-size:0.9rem; color:#999; padding:20px; border-top:1px solid #eee; }
+    :root {
+      --bg-dark: #000;
+      --accent: #06f2c7;
+      --text-light: #eaeaea;
+      --text-muted: #777;
+    }
+    body {
+      margin:0; padding:0; font-family:'Inter','Segoe UI',sans-serif;
+      background:var(--bg-dark); color:var(--text-light);
+      display:flex; flex-direction:column; min-height:100vh;
+    }
+    header {
+      text-align:center; padding:120px 20px 80px;
+      background:radial-gradient(circle at top, #111 0%, #000 100%);
+    }
+    header h1 {
+      font-size:4rem; letter-spacing:2px; font-weight:800;
+      background:linear-gradient(90deg,#06f2c7,#00bfff);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    }
+    header p {
+      font-size:1.3rem; max-width:600px; margin:20px auto 0;
+      color:var(--text-muted);
+    }
+    .teaser {
+      max-width:900px; margin:60px auto; text-align:center; padding:0 20px;
+      font-size:1.5rem; font-weight:300; color:#bbb;
+    }
+    .cta {
+      text-align:center; margin:40px 0;
+    }
+    .cta a {
+      background:var(--accent); color:#000; text-decoration:none;
+      padding:16px 36px; border-radius:50px; font-weight:700;
+      letter-spacing:1px; transition:opacity .3s ease;
+    }
+    .cta a:hover { opacity:0.85; }
+    footer {
+      text-align:center; font-size:0.85rem; color:var(--text-muted);
+      padding:30px 10px; margin-top:auto; border-top:1px solid #111;
+    }
   </style>
 </head>
 <body>
-  <div class="header">
+  <header>
     <h1>Soonish</h1>
-    <p>Your next idea. Almost ready.</p>
+    <p>Something powerful is coming. Secure, self‑hostable notifications for the future.</p>
+  </header>
+
+  <div class="teaser">
+    <p>Engineered with <strong>Temporal</strong> and <strong>Apprise</strong> to orchestrate and deliver messages with precision. No selling data. Just encrypted, reliable signal.</p>
   </div>
 
-  <div class="features">
-    <div class="feature">
-      <!-- placeholder icon -->
-      <img src="icon1.png" alt="Feature 1">
-      <h3>Coming Soon Pages</h3>
-      <p>Pre-launch pages to build awareness and collect interest.</p>
-    </div>
-    <div class="feature">
-      <img src="icon2.png" alt="Feature 2">
-      <h3>Email Notifications</h3>
-      <p>Keep your audience updated when launch happens.</p>
-    </div>
-    <div class="feature">
-      <img src="icon3.png" alt="Feature 3">
-      <h3>Simple & Clean Design</h3>
-      <p>No clutter—focus on message and value.</p>
-    </div>
+  <div class="cta">
+    <a href="mailto:nic@mydigitalharbor.com">Join the Waitlist</a>
   </div>
 
-  <div class="call-to-action">
-    <a href="mailto:hello@soonish.com?subject=Notify%20Me" class="btn">Notify Me</a>
-  </div>
-
-  <div class="footer">
-    Sit tight. We’re making this worth your wait.<br>
-    © 2025 Soonish — All rights reserved.
-  </div>
+  <footer>
+    © 2025 Soonish — Privacy‑minded infrastructure. Coming soon.
+  </footer>
 </body>
 </html>
 
