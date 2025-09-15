@@ -53,10 +53,20 @@ Conventions:
 ### subscriptions
 - id: int PK
 - event_id: int FK -> events.id, not null
-- user_id: int FK -> users.id, nullable (anonymous subscribers)
-- integration_id: int FK -> integrations.id, not null
+- user_id: int FK -> users.id, nullable (anonymous subscribers via session-backed user)
 - created_at: datetime default now
-- Constraints (intent): unique(event_id, user_id, integration_id)
+- Constraints: UNIQUE(event_id, user_id)
+
+### subscription_selectors
+- id: int PK
+- subscription_id: int FK -> subscriptions.id, not null
+- integration_id: int FK -> integrations.id, nullable
+- tag: varchar nullable (stored lowercased)
+- created_at: datetime default now
+- Constraints:
+  - At least one of integration_id or tag is required
+  - UNIQUE(subscription_id, integration_id) when integration_id is not null
+  - UNIQUE(subscription_id, lower(tag)) when tag is not null
 
 ### event_updates
 - id: int PK
@@ -70,11 +80,11 @@ Conventions:
 - id: int PK
 - user_id: int FK -> users.id, not null
 - name: varchar not null
-- apprise_url: text not null (intent: encrypted at rest in production)
-- tag: varchar not null (case-insensitive, per-user; one tag per row)
+- apprise_url: text not null (encrypted at rest in production)
+- tag: varchar not null (stored lowercased; one tag per row)
 - is_active: bool default true
 - created_at: datetime default now
-- Constraints: UNIQUE(user_id, apprise_url, tag)
+- Constraints: UNIQUE(user_id, apprise_url, lower(tag))
 
 ---
 
@@ -283,7 +293,7 @@ Schedule Architecture:
 ## Workflow 3: Event Subscription Workflows
 
 ### 3.1 Anonymous User Subscription
-Note: Under the per-subscription integration_id model, anonymous subscriptions are not supported; this flow is pending redesign.
+Note: Anonymous users are session-backed; do not create a User row until they subscribe to an event or provide an email. When an email is added, a mailto Apprise URL is stored as an Integration for that user. The same user_id is used for subscriptions; later account claim links identity without reconfiguration. Unclaimed session-only users are trimmed after 60 days.
 ```
 User Intent: Subscribe to public event without creating account
 
@@ -303,13 +313,13 @@ Flow:
 9. User receives subscription confirmation
 
 Database Changes:
-- Pending redesign for anonymous flow under per-integration subscription model
+- INSERT Subscription(event_id, user_id, created_at)
 
 Temporal Signals:
-- Pending redesign for anonymous flow under per-integration subscription model
+- EventWorkflow.participant_added({subscription_id, user_id})
 
 Notification Flow:
-- Pending redesign for anonymous flow under per-integration subscription model
+- Deliver via resolved selectors (integration_ids and/or tags)
 ```
 
 ### 3.2 Authenticated User Subscription
@@ -477,6 +487,7 @@ Implementation:
 - Each schedule triggers a ReminderWorkflow instance
 - Timezone-aware scheduling
 - Automatic cleanup/cancellation after event completion or date change
+- Ad-hoc reminders (e.g., "remind me in 12 hours") use Temporal SDK workflow.sleep for durability
 
 Flow per Reminder:
 1. Temporal Schedule triggers ReminderWorkflow(kind)

@@ -1,28 +1,29 @@
 # Spec Open Questions (Running TODO)
 
 ## Workflow Architecture
-- Do we standardize on one EventWorkflow per event (current) and defer per-subscriber workflows until individualized schedules/digests are needed?
-- Should we introduce short-lived workflows for account verification or session management, or keep these outside Temporal for now?
+- Decision: One EventWorkflow per event; per-subscriber workflows deferred until individualized schedules/digests are needed.
+- Keep short-lived workflows for verification/session outside Temporal for now; revisit post reimplementation.
 
 ## Notifications
-- Delivery semantics: accept at-least-once delivery; do we need deduplication or idempotency keys for manual notifications?
- - Fallback scope: Confirm mailto fallback applies to any subscription with zero resolved channels (no selectors resolved) when SMTP is configured (anonymous only).
+- Delivery semantics: at-least-once; dedupe/idempotency keys are a future enhancement.
+- Fallback: if no active targets remain and the user has a mailto Integration, use it; otherwise mark pending. No global SMTP fallback.
 
 ## Data Model
-- Enforce `unique(event_id, email)` on `subscriptions` to prevent duplicate subscriptions?
-- Column-level encryption for `integrations.apprise_url` (library/approach and key management)?
-- Subscription selectors: implemented as `subscription_selectors (subscription_id, integration_id?, tag?)`; confirm FKs, uniqueness, and cascade semantics.
- - Default behavior if an authenticated subscription has no selectors at subscribe-time: deliver via all active user integrations vs. no delivery until selectors added?
+- No `subscriptions.email`; anonymous flows use session-backed users; uniqueness is `unique(event_id, user_id)`.
+- Column-level encryption for `integrations.apprise_url` (library/approach and key management) remains to be selected.
+- Subscription selectors: adopted as `subscription_selectors (subscription_id, integration_id?, tag?)`.
+  - Constraints: one of integration_id or tag required; UNIQUE(subscription_id, integration_id) and UNIQUE(subscription_id, lower(tag)).
+  - Default when no selectors present: no delivery (pending) until selectors added.
 
 ## Event Updates & Reminders
-- Implement `_schedule_reminders()` to cancel and reschedule timers on start_date changes.
-- Define timer cancellation semantics to avoid duplicate reminders when updates occur close to scheduled times.
+- Event-relative reminders via Temporal Schedules (idempotent naming) and rescheduling on start_date changes.
+- Ad-hoc "remind me in N hours" via Temporal SDK workflow.sleep for durability.
 
 ## API & Security
-- Unsubscribe tokens: format, expiry, scope, and revocation strategy.
+- Unsubscribe tokens: opaque random tokens, 60-day TTL, single-use, stored server-side.
 - Private events: invitation model, access rules, and invitation token lifecycle.
 - Subscribe request: validate `integration_ids` belong to the authenticated user; reject foreign IDs; define behavior if an integration is deactivated or deleted.
- - Subscription preference updates: endpoints to add/remove selectors (integration_ids, tags); define semantics for full replacement vs. additive edits.
+- Subscription preference updates: PATCH supports mode add|remove|replace (default add).
 
 ## Observability
 - Persist a `NotificationLog` entity for delivery analytics, retries, and traceability.
@@ -30,5 +31,5 @@
 
 ## DevX & Ops
 - Migration strategy: Alembic workflow and SQLite→Postgres steps, including adding constraints/indexes not supported in SQLite.
-- Integration rate limiting and circuit breaker thresholds (per channel and per user).
- - Migrations for introducing/evolving the `subscription_selectors` join table as the normalized replacement for per-subscription channel selection.
+- Integration rate limiting and circuit breaker thresholds (per channel and per user) remain to be tuned.
+- Migrations include `subscription_selectors` join table as normalized replacement for per-subscription channel selection.

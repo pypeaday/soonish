@@ -1,4 +1,4 @@
-# Soonish MVP Reimplementation Plan
+# Soonish Reimplementation Plan
 
 This plan outlines a step-by-step, incremental rebuild of the Soonish notification system based solely on the specification. Each phase includes goals, concrete deliverables, acceptance criteria, and a diagram.
 
@@ -165,15 +165,14 @@ sequenceDiagram
 
 ---
 
-## Phase 5 — Subscriptions (Anonymous + Authenticated)
+## Phase 5 — Subscriptions (Anonymous session-backed + Authenticated)
 - Goals
-  - Allow anonymous (email-only) and authenticated users to subscribe.
-  - Authenticated users can select one or more of their integrations for this event.
-  - Optional participant tag preferences for content categories.
+  - Allow anonymous (session-backed) and authenticated users to subscribe.
+  - Configure delivery via selectors: explicit integration_ids and/or tags (tags stored lowercased).
 - Deliverables
-  - `POST /api/events/{id}/subscribe` handling both cases.
+  - `POST /api/events/{id}/subscribe` upserts subscription and selectors; `PATCH` supports mode add|remove|replace (default add).
 - Acceptance
-  - Subscription created; selectors stored for provided `integration_ids` and/or `tags`.
+  - Subscription created; selectors stored (integration_ids/tags). Anonymous users persist via a session-backed user_id.
   - Workflow signaled with `participant_added`.
 
 ```mermaid
@@ -186,8 +185,8 @@ sequenceDiagram
   participant W as Worker
   U->>UI: Submit Subscribe form (email, integration_ids, tags)
   UI->>API: POST /api/events/{id}/subscribe (integration_ids, tags)
-  API->>DB: INSERT Subscription(event_id, user_id?, email); INSERT SubscriptionSelector rows
-  API->>TC: signal(event_workflow_id, participant_added, {email})
+  API->>DB: INSERT Subscription(event_id, user_id); INSERT SubscriptionSelector rows
+  API->>TC: signal(event_workflow_id, participant_added, {subscription_id, user_id})
   TC->>W: Deliver signal
 ```
 
@@ -195,8 +194,8 @@ sequenceDiagram
 
 ## Phase 6 — Notification Activity (Selector Expansion Routing)
 - Goals
-  - Implement `send_notification` activity reading subscriptions and resolving selectors (integration_ids and tags).
-  - Fallback intent: SMTP mailto if no endpoints remain; else mark pending.
+  - Implement `send_notification` activity resolving selectors: explicit integration_ids ∪ user integrations matching tags (is_active only, deduped).
+  - Fallback: if no active targets remain and user has a mailto Integration, deliver via it; otherwise mark pending.
 - Deliverables
   - Activity implementation and structured delivery results.
 - Acceptance
@@ -221,12 +220,12 @@ sequenceDiagram
 ## Phase 7 — Reminder Scheduling (T-1d, T-1h)
 
 - Goals
-  - Utilize Temporal schedules and delay-start features to schedule reminders as ReminderWorkflows
+  - Utilize Temporal Schedules for event-relative reminders; ad-hoc "remind me in N hours" uses Temporal SDK workflow.sleep for durability.
 - Deliverables
   - ReminderWorkflow implementation
 - Acceptance
   - Reminders fire at correct times; visible in logs.
-  - Time change in event results in appropriate updates of reminders
+  - Time change in event results in appropriate updates of schedules
 
 ---
 

@@ -41,9 +41,18 @@ class Event(BaseModel):
 class Subscription(BaseModel):
     id: int
     event_id: int
-    user_id: Optional[int]                 # NULL for anonymous subscribers
-    integration_id: int                    # subscription targets a single user integration
+    user_id: Optional[int]                 # session-backed for anonymous; no email column
+    created_at: datetime                   # UNIQUE(event_id, user_id)
+
+class SubscriptionSelector(BaseModel):
+    id: int
+    subscription_id: int                   # FK -> subscriptions.id
+    integration_id: Optional[int] = None   # explicit target
+    tag: Optional[str] = None              # case-insensitive selector (stored lowercased)
     created_at: datetime
+    # Constraints: one of integration_id or tag is required
+    # UNIQUE(subscription_id, integration_id) when integration_id is not null
+    # UNIQUE(subscription_id, lower(tag)) when tag is not null
 
 class EventUpdate(BaseModel):
     id: int
@@ -59,12 +68,12 @@ class EventUpdate(BaseModel):
 class Integration(BaseModel):
     id: int
     user_id: int
-    name: str                # human-readable label (defaults to integration name)
+    name: str                # human-readable label
     apprise_url: str         # encrypted at rest (Apprise-compatible URL)
-    tag: str                 # case-insensitive, per-user tag (one tag per row)
+    tag: str                 # single tag per row; stored lowercased
     is_active: bool = True
     created_at: datetime
-    # DB constraint intent: UNIQUE(user_id, apprise_url, tag)
+    # Constraint: UNIQUE(user_id, apprise_url, lower(tag))
 ```
 
 ---
@@ -159,19 +168,21 @@ POST   /api/events/{id}/notify        # Send manual notification
 
 ### Participant (Subscription) Management
 ```http
-POST   /api/events/{id}/subscribe                      # Create subscription (anonymous or authenticated)
+POST   /api/events/{id}/subscribe                      # Upsert subscription + selectors
+PATCH  /api/events/{id}/subscribe                      # mode: add|remove|replace (default add)
 DELETE /api/events/{id}/subscriptions/{subscription_id} # Remove subscription (owner only)
-POST   /api/unsubscribe                                 # One-click unsubscribe (tokenized)
+POST   /api/unsubscribe                                 # One-click unsubscribe (opaque token, 60d TTL, single-use)
 ```
 
 #### Subscribe Request Body (JSON)
 ```json
 {
-  "integration_id": 42
+  "integration_ids": [42, 43],
+  "tags": ["alerts", "email"]
 }
 ```
 
-Note: Each subscription targets exactly one user integration via `integration_id`.
+Note: A subscription is identified by (event_id, user_id); delivery is resolved via selectors (integration_ids and/or tags).
 
 ### Integration Management
 ```http
@@ -299,6 +310,7 @@ python scripts/test_notification.py
 2. ReminderWorkflow executes the notification activity
 3. All subscriptions delivered
 4. Delivery status logged for monitoring
+5. Ad-hoc reminders (e.g., "remind me in 12 hours") use Temporal SDK workflow.sleep for durability
 
 ---
 
