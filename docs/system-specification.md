@@ -261,6 +261,84 @@ class Settings(BaseSettings):
   - `TEMPORAL_WORKFLOW_TASK_QUEUE`, `TEMPORAL_ACTIVITY_TASK_QUEUE`
   - If unset, default to `TEMPORAL_TASK_QUEUE`
 
+## Database Setup & Conventions
+
+### Supported DATABASE_URL formats
+```bash
+# SQLite (dev, sync engine)
+sqlite:///./soonish.db
+
+# SQLite (dev, async engine)
+sqlite+aiosqlite:///./soonish.db
+
+# PostgreSQL (prod, async engine)
+postgresql+asyncpg://USER:PASS@HOST:5432/DBNAME
+```
+
+`Settings.database_url` maps directly to the engine URL. Choose the driver that matches your engine/session mode (see below).
+
+### Engine/Session mode
+- Preferred (fresh implementation): Async SQLAlchemy (2.x)
+  - Use `AsyncEngine` + `AsyncSession` and async drivers (`+aiosqlite`, `+asyncpg`).
+  - Activities should be `async def` and use async DB access.
+- Legacy/dev compatibility: Sync SQLAlchemy
+  - Use `Engine` + sync `Session` and sync drivers (`sqlite:///...`).
+  - Temporal activities may be sync-def and will run in worker thread pools.
+
+Important: Do not mix async drivers with a sync engine or vice versa. Pick one path per deployment.
+
+### Timezone strategy
+- Store UTC with timezone-aware columns: `DateTime(timezone=True)`.
+- Serialize datetimes to workflows as ISO8601 strings with `Z` (UTC) suffix.
+- In workflows, always compare against `workflow.now()`; normalize any input datetimes first.
+
+### Canonical schema constraints
+- `users.email` UNIQUE.
+- `events.temporal_workflow_id` UNIQUE (idempotent workflow start).
+- Subscriptions (per spec):
+  - `subscriptions`: UNIQUE(event_id, user_id)
+  - `subscription_selectors`:
+    - One of (`integration_id`, `tag`) is required
+    - UNIQUE(subscription_id, integration_id) when integration_id is not null
+    - UNIQUE(subscription_id, lower(tag)) when tag is not null
+- Integrations:
+  - `integrations`: UNIQUE(user_id, apprise_url, lower(tag))
+
+Note: If using the simplified `event_participants` model during reimplementation, enforce UNIQUE(event_id, user_id, integration_id) to prevent duplicates.
+
+### Indexes (hot paths)
+- `events.workflow_id` (or `temporal_workflow_id`), `events.owner_user_id`.
+- `event_participants.event_id` (or `subscriptions.event_id`).
+- `integrations.user_id`.
+
+### Tag normalization & validation
+- Persist tags lowercased on write and index on `lower(tag)`.
+- Validate that integration IDs referenced by authenticated users belong to them.
+
+### Migrations & SQLite caveats
+- Use Alembic for migrations. Some constraints (e.g., `UNIQUE(lower(tag))`) are enforced best in PostgreSQL.
+- In SQLite dev, emulate case-insensitive uniqueness at the app layer if needed.
+
+### Seed/init behavior
+- `scripts/init_db.py` initializes tables and inserts a sample user/integration for development.
+- Idempotent on rerun (exits early if data exists). Treat as dev-only; do not use in production.
+
+### Security notes
+- Store `integrations.apprise_url` encrypted at rest in production.
+- Redact secret-bearing URLs/tokens in logs and error messages.
+
+### Operational knobs (prod)
+- PostgreSQL (async):
+  - Pool: `pool_size=5–10`, `max_overflow=10`, `pool_pre_ping=True`, `pool_recycle=1800`.
+  - Statement timeouts and connection timeouts set at the DB or driver level as appropriate.
+- SQLite (dev):
+  - `connect_args={"check_same_thread": False}` for local dev.
+  - Optional PRAGMAs: `journal_mode=WAL`, `busy_timeout` for improved dev ergonomics.
+
+### Access patterns
+- All DB access happens in activities (never directly in workflows) for determinism.
+- Keep a thin service layer (e.g., `src/db_service.py`) to encapsulate queries and keep activities focused.
+
 ---
 
 ## Management Scripts
