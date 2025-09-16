@@ -245,6 +245,22 @@ class Settings(BaseSettings):
         env_file = ".env"
 ```
 
+## Task Queue Strategy & Scaling
+
+- Default: single queue `soonish-task-queue` for both workflows and activities. Start here and scale horizontally by adding workers.
+- Concurrency knobs (tune per deployment):
+  - Worker: `max_concurrent_activities`, `max_concurrent_workflow_tasks`
+  - Pollers: `max_concurrent_activity_task_polls`, `max_concurrent_workflow_task_polls`
+- Split when needed (operational pivot, no functional change):
+  - `soonish-workflows`: workflow tasks
+  - `soonish-activities`: activity tasks (Apprise/DB/HTTP)
+- Deployment guidance:
+  - Run separate worker groups per queue; autoscale independently
+  - Keep workflow concurrency modest; allow higher activity concurrency
+- Optional future envs (design intent):
+  - `TEMPORAL_WORKFLOW_TASK_QUEUE`, `TEMPORAL_ACTIVITY_TASK_QUEUE`
+  - If unset, default to `TEMPORAL_TASK_QUEUE`
+
 ---
 
 ## Management Scripts
