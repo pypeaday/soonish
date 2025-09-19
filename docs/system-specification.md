@@ -12,7 +12,6 @@ Soonish is a notification-first event coordination service built on Temporal.io 
 - **Notifications**: Apprise library for multi-platform delivery
 - **Frontend**: HTMX + Alpine.js for reactive UI
 - **Configuration**: Environment-based with Pydantic BaseSettings
-
 ---
 
 ## Data Models
@@ -22,6 +21,7 @@ Soonish is a notification-first event coordination service built on Temporal.io 
 class User(BaseModel):
     id: int
     email: str
+    name: str
     is_verified: bool = False
     created_at: datetime
 ```
@@ -30,12 +30,15 @@ class User(BaseModel):
 ```python
 class Event(BaseModel):
     id: int
-    owner_user_id: int
     name: str
     start_date: datetime
     end_date: Optional[datetime]
     temporal_workflow_id: str
     is_public: bool = True
+    # Participant messaging policy for future features
+    # "off" | "participants_to_owners" | "participants_to_owners_moderated" |
+    # "forum_participants_only" | "forum_readonly"
+    messaging_policy: str = "off"
     created_at: datetime
 
 class Subscription(BaseModel):
@@ -60,6 +63,33 @@ class EventUpdate(BaseModel):
     category: str                          # e.g., general, schedule_change
     title: str
     body: str
+    created_at: datetime
+```
+
+### Event Roles & Messaging
+```python
+class EventMembership(BaseModel):
+    id: int
+    event_id: int
+    user_id: int
+    role: str                 # "owner" | "editor" | "viewer"
+    created_at: datetime
+
+class EventMessage(BaseModel):
+    id: int
+    event_id: int
+    author_user_id: int
+    title: Optional[str]
+    body: str
+    category: Optional[str]   # e.g., question, comment
+    status: str               # "pending" | "approved" | "rejected"
+    reply_to_message_id: Optional[int]
+    created_at: datetime
+
+class EventMessagingWhitelist(BaseModel):
+    id: int
+    event_id: int
+    user_id: int
     created_at: datetime
 ```
 
@@ -121,6 +151,10 @@ async def event_updated(updated_data: Dict[str, Any])
 @workflow.signal
 async def send_manual_notification(title: str, body: str, subscription_ids: Optional[List[int]] = None)
     # Sends custom notifications to subscriptions (all when subscription_ids omitted)
+
+@workflow.signal
+async def participant_message(message_data: Dict[str, Any])
+    # Optional: route approved participant messages to organizers
 ```
 
 ---
@@ -161,9 +195,17 @@ async def send_notification(
 ```http
 POST   /api/events                    # Create new event
 GET    /api/events/{id}               # Get event details  
-PATCH  /api/events/{id}               # Update event
-DELETE /api/events/{id}               # Cancel event
-POST   /api/events/{id}/notify        # Send manual notification
+PATCH  /api/events/{id}               # Update event (owner or editor)
+DELETE /api/events/{id}               # Cancel event (owner only)
+POST   /api/events/{id}/notify        # Send manual notification (owner or editor)
+```
+
+### Event Memberships
+```http
+GET    /api/events/{id}/members                 # List members (owner or editor)
+POST   /api/events/{id}/members                 # Add member (owner only)
+PATCH  /api/events/{id}/members/{user_id}       # Change role (owner only)
+DELETE /api/events/{id}/members/{user_id}       # Remove member (owner only)
 ```
 
 ### Participant (Subscription) Management
@@ -201,6 +243,13 @@ POST   /api/auth/login                # Authenticate user
 POST   /api/auth/logout               # End session
 ```
 
+### Messages
+```http
+POST   /api/events/{id}/messages              # Create participant message (policy + rate limit enforced)
+GET    /api/events/{id}/messages              # List approved messages (forum policies only)
+PATCH  /api/events/{id}/messages/{message_id} # Approve/reject (owner or editor)
+```
+
 ---
 
 ## Configuration Management
@@ -225,6 +274,10 @@ SMTP_SERVER=smtp.example.com
 SMTP_USERNAME=user
 SMTP_PASSWORD=pass
 SMTP_FROM=sender@example.com
+
+# Messaging (optional; defaults may be used)
+MESSAGE_RATE_LIMIT_REQUESTS=10
+MESSAGE_RATE_LIMIT_WINDOW=3600
 ```
 
 ### Pydantic Configuration
@@ -304,12 +357,23 @@ Important: Do not mix async drivers with a sync engine or vice versa. Pick one p
 - Integrations:
   - `integrations`: UNIQUE(user_id, apprise_url, lower(tag))
 
+- Event memberships (RBAC):
+  - `event_memberships`: UNIQUE(event_id, user_id)
+  - Application rule: at least one `owner` per event
+  - `role` constrained to {owner, editor, viewer}
+
+- Messaging:
+  - `event_messages.status` constrained to {pending, approved, rejected}
+  - `event_messaging_whitelist`: UNIQUE(event_id, user_id)
+
 Note: If using the simplified `event_participants` model during reimplementation, enforce UNIQUE(event_id, user_id, integration_id) to prevent duplicates.
 
 ### Indexes (hot paths)
-- `events.workflow_id` (or `temporal_workflow_id`), `events.owner_user_id`.
+- `events.workflow_id` (or `temporal_workflow_id`).
 - `event_participants.event_id` (or `subscriptions.event_id`).
 - `integrations.user_id`.
+- `event_memberships.event_id`, `event_memberships.user_id`, optionally `(event_id, role)`.
+- `event_messages.event_id`, `(event_id, status)`, `(event_id, created_at)`.
 
 ### Tag normalization & validation
 - Persist tags lowercased on write and index on `lower(tag)`.
@@ -406,6 +470,12 @@ python scripts/test_notification.py
 4. Delivery status logged for monitoring
 5. Ad-hoc reminders (e.g., "remind me in 12 hours") use Temporal SDK workflow.sleep for durability
 
+### Participant Messaging Flow
+1. Participant submits message via API
+2. Server validates `messaging_policy`, applies rate limits, creates `event_messages` (pending/approved)
+3. If approved immediately, notify organizers (owners/editors) via notification activity
+4. If pending, owners/editors review and approve/reject; on approval, optionally publish to forum view and notify organizers
+
 ---
 
 ## Security Considerations
@@ -417,10 +487,13 @@ python scripts/test_notification.py
 - No sensitive data in logs or error messages
 
 ### Access Control
-- Event organizers control subscriber notifications
+- Per-event RBAC via `event_memberships` (roles: owner, editor, viewer)
+  - Owners: full control incl. membership management and deletion
+  - Editors: update event, manage participants, send notifications
+  - Viewers: view-only for private events
 - Subscribers control their own integration preferences
-- Public events allow anonymous subscription
-- Private events require explicit approval
+- Public events allow anonymous subscription; private events require explicit invitation
+- Participant messaging governed by `events.messaging_policy` with optional moderation and whitelist; rate limits enforced
 
 ### Production Readiness
 - PostgreSQL migration path established

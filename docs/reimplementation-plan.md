@@ -47,9 +47,40 @@ flowchart LR
 
 ---
 
+## Phase 4a — Event Membership Management (RBAC)
+- Goals
+  - Allow owners to add/remove members and change roles (owner|editor|viewer).
+- Deliverables
+  - `GET/POST/PATCH/DELETE /api/events/{id}/members` endpoints.
+- Acceptance
+  - UNIQUE(event_id, user_id) enforced; cannot remove the last owner.
+
+```mermaid
+sequenceDiagram
+  participant Owner
+  participant API
+  participant DB
+  Owner->>API: POST /api/events/{id}/members (user_id, role)
+  API->>DB: INSERT EventMembership(event_id, user_id, role)
+  Owner->>API: PATCH /api/events/{id}/members/{user_id} (role)
+  API->>DB: UPDATE EventMembership SET role=...
+  Owner->>API: DELETE /api/events/{id}/members/{user_id}
+  API->>DB: DELETE EventMembership WHERE ... (validate at least one owner remains)
+```
+
+---
+
+ 
+
 ## Phase 1 — Data Model & Database
 - Goals
-  - Implement data models: `users`, `events`, `subscriptions`, `event_updates`, `integrations`.
+  - Implement core data models:
+    - `users`
+    - `events` 
+    - `event_memberships` 
+    - `subscriptions`
+    - `subscription_selectors`
+    - `integrations`
 - Deliverables
   - SQLAlchemy models + async DB session utilities.
   - DB init script and migration notes.
@@ -61,24 +92,31 @@ classDiagram
   class User {
     int id
     string email
+    string name
     bool is_verified
     datetime created_at
   }
   class Event {
     int id
-    int owner_user_id
     string name
     datetime start_date
     datetime end_date
     string temporal_workflow_id
     bool is_public
+    string messaging_policy
     datetime created_at
   }
   class Subscription {
     int id
     int event_id
     int user_id
+    datetime created_at
+  }
+  class SubscriptionSelector {
+    int id
+    int subscription_id
     int integration_id
+    string tag
     datetime created_at
   }
   class Integration {
@@ -90,9 +128,18 @@ classDiagram
     bool is_active
     datetime created_at
   }
-  User "1" --o "*" Event: owns
+  class EventMembership {
+    int id
+    int event_id
+    int user_id
+    string role
+    datetime created_at
+  }
   Event "1" --o "*" Subscription: has
+  Subscription "1" --o "*" SubscriptionSelector: selectors
   User "1" --o "*" Integration: has
+  Event "1" --o "*" EventMembership: members
+  User "1" --o "*" EventMembership: roles
 ```
 
 ---
@@ -137,6 +184,7 @@ sequenceDiagram
   U->>UI: Submit Create Event form
   UI->>API: POST /api/events
   API->>DB: INSERT Event(..., temporal_workflow_id)
+  API->>DB: INSERT EventMembership(event_id, user_id, role='owner')
   API->>TC: start_workflow(EventWorkflow.run, event_id, event_data)
   TC->>W: Queue start on task queue
   W->>WF: Start run(event_id, event_data)

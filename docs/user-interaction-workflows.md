@@ -12,7 +12,8 @@ This document defines every possible user interaction workflow in the Soonish no
 - **Definition**: Users without accounts who interact via public event links
 - **Capabilities**: View public events, subscribe with email only
 - **Limitations**: No notification preferences, no integration management
-- **Data Storage**: Subscription record with `user_id = NULL`
+- **Data Storage**: non-verified User record with the default email integration record
+- **Management**: verification link sent with subscription to event; unverified accounts are trimmed after 60 days without a subscription
 
 ### 2. Authenticated Users
 - **Definition**: Users with verified accounts and active sessions
@@ -35,20 +36,21 @@ Conventions:
 ### users
 - id: int PK
 - email: varchar, unique, indexed, not null
+- name: varchar not null
 - is_verified: bool default false
 - created_at: datetime default now
 - Relationships: `events` (1:N), `integrations` (1:N)
 
 ### events
 - id: int PK
-- owner_user_id: int FK -> users.id, not null
 - name: varchar not null
 - start_date: datetime not null
 - end_date: datetime nullable
 - temporal_workflow_id: varchar unique not null
 - is_public: bool default true
+- messaging_policy: enum('off','participants_to_owners','participants_to_owners_moderated','forum_participants_only','forum_readonly') default 'off'
 - created_at: datetime default now
-- Relationships: `owner` (N:1 User), `subscriptions` (1:N Subscription)
+- Relationships: `memberships` (1:N EventMembership), `subscriptions` (1:N Subscription)
 
 ### subscriptions
 - id: int PK
@@ -75,6 +77,32 @@ Conventions:
 - title: varchar not null
 - body: text not null
 - created_at: datetime default now
+
+### event_memberships
+- id: int PK
+- event_id: int FK -> events.id, not null
+- user_id: int FK -> users.id, not null
+- role: varchar not null  # 'owner' | 'editor' | 'viewer'
+- created_at: datetime default now
+- Constraints: UNIQUE(event_id, user_id); at least one 'owner' per event (app-level)
+
+### event_messages
+- id: int PK
+- event_id: int FK -> events.id, not null
+- author_user_id: int FK -> users.id, not null
+- title: varchar nullable
+- body: text not null
+- category: varchar nullable  # e.g., question, comment
+- status: varchar not null    # 'pending' | 'approved' | 'rejected'
+- reply_to_message_id: int FK -> event_messages.id, nullable
+- created_at: datetime default now
+
+### event_messaging_whitelist
+- id: int PK
+- event_id: int FK -> events.id, not null
+- user_id: int FK -> users.id, not null
+- created_at: datetime default now
+- Constraints: UNIQUE(event_id, user_id)
 
 ### integrations
 - id: int PK
@@ -125,7 +153,7 @@ Conventions:
 - Acceptance Criteria:
   - Event creation starts a Temporal workflow with reminder timers.
   - Adding a participant signals `participant_added` and triggers a welcome notification.
-  - Reminders fire at T-1d and T-1h relative to start_date (timezone-aware).
+  - Reminders fire at T-1d and T-1h relative to start_date (timezone-aware) (configurable | default).
   - Manual notifications deliver to all subscriptions or to specific `subscription_ids`.
   - Integrations persist Apprise URLs; deliveries occur via Apprise.
   - Configurable via environment variables.
@@ -159,15 +187,20 @@ Conventions:
   - `POST /api/auth/login`: Authenticate and create session
 
 - **Events**
-  - `POST /api/events`: Create event (auth required)
+  - `POST /api/events`: Create new event
   - `GET /api/events/{id}`: Get event (respect visibility)
-  - `PATCH /api/events/{id}`: Update event (owner only)
-  - `POST /api/events/{id}/notify`: Send manual notification (owner; optional subscription_ids)
+  - `PATCH /api/events/{id}`: Update event (owner or editor)
+  - `POST /api/events/{id}/notify`: Send manual notification (owner or editor; optional subscription_ids)
   - `GET /api/events/{id}/workflow/status`: Introspect workflow health (ops)
 
+- **Event Memberships**
+  - `GET /api/events/{id}/members`: List members (owner or editor)
+  - `POST /api/events/{id}/members`: Add member (owner only)
+  - `PATCH /api/events/{id}/members/{user_id}`: Change role (owner only)
+  - `DELETE /api/events/{id}/members/{user_id}`: Remove member (owner only)
 - **Subscriptions**
   - `POST /api/events/{id}/subscribe`: Subscribe (anonymous or authenticated)
-  - `DELETE /api/events/{id}/subscriptions/{subscription_id}`: Remove subscription (owner)
+  - `DELETE /api/events/{id}/subscriptions/{subscription_id}`: Remove subscription (owner or editor)
   - `POST /api/unsubscribe`: One-click unsubscribe (tokenized)
 
 - **Integrations**
@@ -257,7 +290,8 @@ Flow:
 9. User receives confirmation notification
 
 Database Changes:
-- INSERT Event(owner_user_id, name, start_date, temporal_workflow_id, is_public)
+- INSERT Event(name, start_date, temporal_workflow_id, is_public)
+- INSERT EventMembership(event_id, user_id, role='owner')
 
 Temporal Workflows:
 - EventWorkflow (30-day lifecycle)
@@ -435,7 +469,7 @@ Flow:
 7. Subscribers receive update notification
 
 Database Changes:
-- UPDATE Event SET ... WHERE id = ? AND owner_user_id = ?
+- UPDATE Event SET ... WHERE id = ?
 
 Temporal Signals:
 - EventWorkflow.event_updated({updated_fields})
@@ -595,6 +629,57 @@ Data Collection:
 - User engagement metrics
 ```
 
+## Workflow 9: Participant Messaging & Moderation
+
+### 9.1 Participant Message Submission
+```
+User Intent: Send a message (e.g., question) to event organizers
+
+Prerequisites:
+- Event messaging policy allows messaging (not 'off')
+- User is a participant (subscription exists) or authenticated with access
+
+Flow:
+1. User submits message via POST /api/events/{id}/messages
+2. Server enforces rate limit and validates policy/whitelist
+3. System creates EventMessage with status 'approved' or 'pending' (based on policy)
+4. If approved: notify organizers (owners/editors) via notification activity
+5. If pending: owners/editors can moderate (approve/reject)
+
+Database Changes:
+- INSERT EventMessage(event_id, author_user_id, title?, body, category?, status)
+
+Notifications:
+- On approval or immediate approval, notify organizers
+```
+
+### 9.2 Message Moderation
+```
+User Intent: Approve or reject participant messages
+
+Prerequisites:
+- User is owner or editor
+
+Flow:
+1. User reviews pending messages
+2. User approves or rejects via PATCH /api/events/{id}/messages/{message_id}
+3. On approval, message may appear in forum view (policy-dependent) and notify organizers
+```
+
+## Workflow 10: Event Membership Management
+```
+User Intent: Manage who can edit or own an event
+
+Prerequisites:
+- User is owner
+
+Flow:
+1. Owner lists members via GET /api/events/{id}/members
+2. Owner adds an editor/owner via POST /api/events/{id}/members
+3. Owner changes roles or removes members via PATCH/DELETE
+4. Prevent removal if it would leave zero owners
+```
+
 ---
 
 ## Environment & Configuration
@@ -669,10 +754,13 @@ Data Collection:
 - API keys stored in environment variables only
 
 ### Access Control
-- Event organizers control participant access
-- Users control their own integration preferences
-- Public events allow anonymous subscription
-- Private events require explicit invitation
+- Per-event RBAC via `event_memberships` (roles: owner, editor, viewer)
+  - Owners: full control incl. membership management and deletion
+  - Editors: update event, manage participants, send notifications
+  - Viewers: view-only for private events
+- Subscribers control their own integration preferences
+- Public events allow anonymous subscription; private events require explicit invitation
+- Participant messaging governed by `events.messaging_policy` with optional moderation and whitelist; rate limits enforced
 
 ### Audit Trail
 - All user actions logged
