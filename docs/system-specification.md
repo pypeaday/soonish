@@ -149,7 +149,7 @@ async def event_updated(updated_data: Dict[str, Any])
     # Reschedules reminders if start_date changed
 
 @workflow.signal
-async def send_manual_notification(title: str, body: str, subscription_ids: Optional[List[int]] = None)
+async def send_manual_notification(title: str, body: str, subscription_ids: Optional[List[int]] = None, notification_level: str = "info")
     # Sends custom notifications to subscriptions (all when subscription_ids omitted)
 
 @workflow.signal
@@ -166,12 +166,21 @@ async def participant_message(message_data: Dict[str, Any])
 @activity.defn
 async def send_notification(
     event_id: int,
-    notification_type: str,
+    notification_level: str,
     title: str, 
     body: str,
     subscription_ids: Optional[List[int]] = None,
 ) -> Dict[str, Any]
 ```
+
+#### Notification Levels
+- Purpose: drive templating, routing/severity, and analytics.
+- Allowed (MVP): info | warning | critical
+- Validation is permissive; unknown values may be accepted and mapped best-effort.
+- Apprise mapping (best-effort):
+  - info -> notify_type=INFO; normal priority where supported
+  - warning -> notify_type=WARNING; elevated/high where supported
+  - critical -> notify_type=FAILURE; emergency/highest where supported
 
 #### Delivery Semantics (Per-subscription integration)
 1. Audience selection:
@@ -199,6 +208,8 @@ PATCH  /api/events/{id}               # Update event (owner or editor)
 DELETE /api/events/{id}               # Cancel event (owner only)
 POST   /api/events/{id}/notify        # Send manual notification (owner or editor)
 ```
+
+Manual notify request body: title, body, optional subscription_ids, optional notification_level (default "info").
 
 ### Event Memberships
 ```http
@@ -299,6 +310,8 @@ class Settings(BaseSettings):
 ```
 
 ## Task Queue Strategy & Scaling
+
+Note: Queue names are not prescribed. Choose names per deployment and set them via environment variables. A single `TEMPORAL_TASK_QUEUE` is sufficient to start; splitting into workflow/activity queues is optional and deployment-driven.
 
 - Default: single queue `soonish-task-queue` for both workflows and activities. Start here and scale horizontally by adding workers.
 - Concurrency knobs (tune per deployment):

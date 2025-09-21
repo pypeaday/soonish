@@ -217,6 +217,8 @@ Conventions:
 
 ## Workflow 1: User Account Creation & Authentication
 
+Note (MVP): Account verification and session management are implemented outside Temporal for simplicity. Any Temporal workflows described here are future/optional and not part of the MVP.
+
 ### 1.1 Account Registration
 ```
 User Intent: Create account to manage events and notifications
@@ -698,6 +700,8 @@ Flow:
 
 ### Primary Workflows
 
+Note (MVP): UserVerificationWorkflow and SessionManagementWorkflow are handled outside Temporal; references here are future/optional concepts retained for planning.
+
 1. **EventWorkflow** (per event)
    - Lifecycle: 30 days
    - Responsibilities: Event management, notifications, reminders
@@ -739,9 +743,10 @@ Flow:
   - `participant_added(participant: { subscription_id: int, user_id?: int, integration_id: int })`
   - `participant_removed(participant: { email: str })`
   - `event_updated(updated: { start_date?: ISO8601 str, name?: str, ... })`
-  - `send_manual_notification(title: str, body: str, subscription_ids?: list[int])`
+  - `send_manual_notification(title: str, body: str, subscription_ids?: list[int], notification_level: str = "info")`
  - Activities
-  - `send_notification(event_id: int, notification_type: str, title: str, body: str, subscription_ids?: list[int]) -> { delivered: int, failed: int, results: list }`
+  - `send_notification(event_id: int, notification_level: str, title: str, body: str, subscription_ids?: list[int]) -> { delivered: int, failed: int, results: list }`
+  - `notification_level` values (MVP): info | warning | critical (permissive validation; unknown values may be accepted and mapped best-effort)
 
 ---
 

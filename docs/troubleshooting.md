@@ -125,7 +125,7 @@ async def participant_added(self, participant_data: Dict[str, Any]):
     # Always use string-based activity calls
     await workflow.execute_activity(
         "send_notification",
-        args=[self.event_id, "participant_added", title, body],
+        args=[self.event_id, "info", title, body],
         schedule_to_close_timeout=timedelta(minutes=5),
         retry_policy=RetryPolicy(maximum_attempts=3)
     )
@@ -135,7 +135,7 @@ async def participant_added(self, participant_data: Dict[str, Any]):
 
 ```python
 @activity.defn
-async def send_notification(event_id: int, notification_type: str, ...):
+async def send_notification(event_id: int, notification_level: str, ...):
     # Activities can import external libraries safely
     import apprise
     

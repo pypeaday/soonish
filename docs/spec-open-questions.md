@@ -4,9 +4,16 @@
 - Decision: One EventWorkflow per event; per-subscriber workflows deferred until individualized schedules/digests are needed.
 - Keep short-lived workflows for verification/session outside Temporal for now; revisit post reimplementation.
 
+Decision (MVP): Implement user verification and session management outside Temporal; any Temporal-based flows for these are future/optional.
+
 ## Notifications
 - Delivery semantics: at-least-once; dedupe/idempotency keys are a future enhancement.
 - Fallback: if no active targets remain and the user has a mailto Integration, use it; otherwise mark pending. No global SMTP fallback.
+
+Decision: Replace `notification_type` with `notification_level` (enum-like) to drive templating, routing, and analytics.
+- Allowed (MVP): info | warning | critical
+- Validation is permissive; unknown levels may be accepted and mapped best-effort.
+- Apprise mapping (best-effort): info→INFO (normal), warning→WARNING (elevated/high), critical→FAILURE (emergency/highest) where supported.
 
 ## Data Model
 - No `subscriptions.email`; anonymous flows use session-backed users; uniqueness is `unique(event_id, user_id)`.
