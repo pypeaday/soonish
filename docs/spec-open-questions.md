@@ -16,7 +16,6 @@ Decision: Replace `notification_type` with `notification_level` (enum-like) to d
 - Apprise mapping (best-effort): info→INFO (normal), warning→WARNING (elevated/high), critical→FAILURE (emergency/highest) where supported.
 
 ## Data Model
-- No `subscriptions.email`; anonymous flows use session-backed users; uniqueness is `unique(event_id, user_id)`.
 - Column-level encryption for `integrations.apprise_url` (library/approach and key management) remains to be selected.
 - Subscription selectors: adopted as `subscription_selectors (subscription_id, integration_id?, tag?)`.
   - Constraints: one of integration_id or tag required; UNIQUE(subscription_id, integration_id) and UNIQUE(subscription_id, lower(tag)).
@@ -24,7 +23,7 @@ Decision: Replace `notification_type` with `notification_level` (enum-like) to d
 
 ## Event Updates & Reminders
 - Event-relative reminders via Temporal Schedules (idempotent naming) and rescheduling on start_date changes.
-- Ad-hoc "remind me in N hours" via Temporal SDK workflow.sleep for durability.
+- Ad-hoc "remind me in N hours" via Temporal durable timers (asyncio.sleep for python I think)
 
 ## API & Security
 - Unsubscribe tokens: opaque random tokens, 60-day TTL, single-use, stored server-side.
@@ -39,4 +38,3 @@ Decision: Replace `notification_type` with `notification_level` (enum-like) to d
 ## DevX & Ops
 - Migration strategy: Alembic workflow and SQLite→Postgres steps, including adding constraints/indexes not supported in SQLite.
 - Integration rate limiting and circuit breaker thresholds (per channel and per user) remain to be tuned.
-- Migrations include `subscription_selectors` join table as normalized replacement for per-subscription channel selection.

@@ -2,7 +2,7 @@
 
 ## System Overview
 
-Soonish is a notification-first event coordination service built on Temporal.io workflows. The system enables event organizers to create events and automatically notify subscribers through their preferred communication channels without requiring subscribers to install specific applications or create accounts.
+Soonish is a notification-first event coordination service built on Temporal.io workflows. The system enables event organizers to create events and automatically notify subscribers through their preferred communication channels without requiring subscribers to install specific applications or create accounts by taking advantage of apprise's notification library to issue notifications through any channel a user already is using (email, slack, discord, etc.)
 
 ### Core Architecture
 
