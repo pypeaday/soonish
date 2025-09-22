@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <meta property="og:title" content="Notifiq" />
+  <meta name="twitter:title" content="Notifiq" />
+  <meta name="twitter:card" content="summary_large_image">
+  <meta property="og:image" content="og-image.svg">
+  <meta name="twitter:image" name="twitter:image" content="og-image.svg">
+  <meta property="og:url" content="https://notifiq.net/">
+  <meta name="twitter:creator" content="@soonishapp">
+  <meta name="twitter:site" content="@soonishapp">
+
+  <title>Notifiq</title>
+  <style>
+    :root {
+      --bg-dark: #0a0a0a;
+      --accent: #3D9970; /* Deep Seafoam Green */
+      --text-light: #f0f0f0;
+      --text-muted: #888;
+    }
+    body {
+      margin:0; padding:0; font-family:'Inter', 'Segoe UI', sans-serif;
+      background:var(--bg-dark); color:var(--text-light);
+      display:flex; flex-direction:column; min-height:100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    header {
+      text-align:center; padding:140px 20px 80px;
+      background:radial-gradient(circle at top, #1a1a1a 0%, #0a0a0a 100%);
+    }
+    header h1 {
+      font-size:5rem; letter-spacing:1px; font-weight:800;
+      background:linear-gradient(90deg, #3D9970, #20B2AA);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      color: transparent;
+      margin: 0;
+    }
+    header p {
+      font-size:1.4rem; max-width:600px; margin:20px auto 0;
+      color:var(--text-muted);
+      font-weight: 300;
+    }
+    .teaser {
+      max-width:900px; margin:60px auto; text-align:center; padding:0 20px;
+      font-size:1.5rem; font-weight:300; color:#ccc;
+      line-height: 1.6;
+    }
+    .teaser strong {
+      color: var(--text-light);
+      font-weight: 700;
+    }
+    .cta {
+      text-align:center; margin:40px 0 80px;
+    }
+    .cta a {
+      background:var(--accent); color:#fff; text-decoration:none;
+      padding:16px 36px; border-radius:50px; font-weight:700;
+      letter-spacing:1px; transition: transform .3s ease, opacity .3s ease;
+      display: inline-block;
+    }
+    .cta a:hover {
+      transform: scale(1.05);
+      opacity:0.9;
+    }
+    footer {
+      text-align:center; font-size:0.9rem; color:var(--text-muted);
+      padding:40px 20px; margin-top:auto; border-top:1px solid #1c1c1c;
+    }
+    footer p {
+      margin: 5px 0;
+    }
+    footer a {
+      color: #bbb;
+      text-decoration: none;
+      transition: color .3s ease;
+    }
+    footer a:hover {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Notifiq</h1>
+    <p>Notifications that are... magnifique!</p>
+  </header>
+
+  <div class="teaser">
+    <p>Built on <strong>Temporal</strong> and <strong>Apprise</strong> to orchestrate and deliver critical messages with precision and reliability. Your data is never sold, just securely encrypted and delivered.</p>
+  </div>
+
+  <div class="cta">
+    <a href="mailto:nic@mydigitalharbor.com">Get Early Access</a>
+  </div>
+
+  <footer>
+    <p>© 2025 Notifiq — Privacy-first notifications. Coming soon.</p>
+    <p>A <a href="https://mydigitalharbor.com" target="_blank" rel="noopener noreferrer">Digital Harbor</a> product.</p>
+  </footer>
+</body>
+</html>
+
