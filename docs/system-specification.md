@@ -12,6 +12,12 @@ Soonish is a notification-first event coordination service built on Temporal.io 
 - **Notifications**: Apprise library for multi-platform delivery
 - **Frontend**: HTMX + Alpine.js for reactive UI
 - **Configuration**: Environment-based with Pydantic BaseSettings
+
+### Terminology
+- Subscriber: a person receiving notifications for an event.
+- Subscription: the record linking an event to a user; delivery is resolved via `subscription_selectors` (integration_ids and/or tags).
+- Participant: synonym used historically; docs prefer subscriber/subscription.
+
 ---
 
 ## Data Models
@@ -25,6 +31,7 @@ class User(BaseModel):
     is_verified: bool = False
     created_at: datetime
 ```
+Note: for anonymous flows, a fallback display name (e.g., from email local-part) may be used to satisfy NOT NULL.
 
 ### Event System
 ```python
@@ -182,14 +189,15 @@ async def send_notification(
   - warning -> notify_type=WARNING; elevated/high where supported
   - critical -> notify_type=FAILURE; emergency/highest where supported
 
-#### Delivery Semantics (Per-subscription integration)
+#### Delivery Semantics (Selector-based routing)
 1. Audience selection:
    - If `subscription_ids` is provided: restrict to those subscriptions.
    - Otherwise: audience = all active subscriptions of the event.
 2. Delivery routing per subscription:
-   - Load the referenced `integration_id` and ensure it is active.
-   - Deliver via the Integration's `apprise_url`.
-   - If integration is inactive or missing: mark delivery as `pending`.
+   - Load `subscription_selectors` for the subscription.
+   - Resolve explicit `integration_id`s plus the user's active integrations matching lowercased `tag`s; dedupe.
+   - Deliver via each resolved Integration's `apprise_url`.
+   - If no active targets resolve: mark delivery as `pending` (mailto fallback may apply if configured).
 
 #### Supported Integrations (via Apprise)
 - **Email**: `mailto://username:password@server/?from=sender&to=recipient`
@@ -289,6 +297,10 @@ SMTP_FROM=sender@example.com
 # Messaging (optional; defaults may be used)
 MESSAGE_RATE_LIMIT_REQUESTS=10
 MESSAGE_RATE_LIMIT_WINDOW=3600
+
+# Notification fanout (optional; defaults may be used)
+NOTIFICATION_BATCH_SIZE=100
+NOTIFICATION_MAX_PARALLEL_BATCHES=4
 ```
 
 ### Pydantic Configuration
@@ -304,6 +316,8 @@ class Settings(BaseSettings):
     smtp_username: Optional[str] = None
     smtp_password: Optional[str] = None
     smtp_from: Optional[str] = None
+    notification_batch_size: Optional[int] = 100
+    notification_max_parallel_batches: Optional[int] = 4
     
     class Config:
         env_file = ".env"
@@ -326,6 +340,19 @@ Note: Queue names are not prescribed. Choose names per deployment and set them v
 - Optional future envs (design intent):
   - `TEMPORAL_WORKFLOW_TASK_QUEUE`, `TEMPORAL_ACTIVITY_TASK_QUEUE`
   - If unset, default to `TEMPORAL_TASK_QUEUE`
+
+### Task Queue Strategy & Scaling
+ ...
+   - `TEMPORAL_WORKFLOW_TASK_QUEUE`, `TEMPORAL_ACTIVITY_TASK_QUEUE`
+   - If unset, default to `TEMPORAL_TASK_QUEUE`
+ 
++### Notification Fanout Strategy
++- Batch fanout to bound activity duration and improve parallelism.
++- Configure batch size via `NOTIFICATION_BATCH_SIZE` (default 100).
++- Each [send_notification](cci:1://file:///home/nic/projects/personal/soonish/src/activities/notifications.py:22:0-101:13) activity should process one batch; large audiences are delivered via multiple batches (sequential or parallel) rather than one long-running activity.
++- Prefer using worker activity concurrency for parallel batches; tune `max_concurrent_activities` and pollers per deployment.
++- For long-lived workflows with many notifications, use `Continue-As-New` periodically to keep workflow history small.
++- Optionally cap per-event parallel batches with `NOTIFICATION_MAX_PARALLEL_BATCHES`.
 
 ## Database Setup & Conventions
 
@@ -382,7 +409,7 @@ Important: Do not mix async drivers with a sync engine or vice versa. Pick one p
 Note: If using the simplified `event_participants` model during reimplementation, enforce UNIQUE(event_id, user_id, integration_id) to prevent duplicates.
 
 ### Indexes (hot paths)
-- `events.workflow_id` (or `temporal_workflow_id`).
+- `events.temporal_workflow_id`.
 - `event_participants.event_id` (or `subscriptions.event_id`).
 - `integrations.user_id`.
 - `event_memberships.event_id`, `event_memberships.user_id`, optionally `(event_id, role)`.
@@ -390,6 +417,7 @@ Note: If using the simplified `event_participants` model during reimplementation
 
 ### Tag normalization & validation
 - Persist tags lowercased on write and index on `lower(tag)`.
+- In SQLite dev, since tags are lowercased on write, `UNIQUE(subscription_id, tag)` enforces case-insensitive uniqueness; Postgres may use `UNIQUE(lower(tag))`.
 - Validate that integration IDs referenced by authenticated users belong to them.
 
 ### Migrations & SQLite caveats
@@ -425,7 +453,6 @@ Note: If using the simplified `event_participants` model during reimplementation
 # Create event with workflow
 python scripts/create_event.py
 
-# Update event and notify participants  
 # Update event and notify subscribers  
 python scripts/update_event.py <event_id> [new_name]
 
@@ -464,7 +491,7 @@ python scripts/test_notification.py
 
 ### Subscription Flow  
 1. Participant subscribes via public event link
-2. Subscription record created linking the event to a user `integration_id`
+2. Create Subscription (event_id, user_id); persist SubscriptionSelector rows for integration_ids and/or tags
 3. Workflow signaled with `participant_added`
 4. Welcome notification sent to new subscriber
 5. Subscription count updated in workflow state
@@ -579,6 +606,11 @@ python scripts/test_notification.py
 ---
 
 ## Future Enhancements
+
+### Subscription Plans (future)
+- Tiers: personal | small_business | enterprise
+- Env: `DEFAULT_PLAN=personal`, `PLAN_ENFORCEMENT=false` (MVP off)
+- No quotas yet; enforcement to be defined later
 
 ### Phase 1 Extensions
 - Additional integration types (Slack, Discord, SMS)

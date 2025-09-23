@@ -20,10 +20,11 @@ Decision: Replace `notification_type` with `notification_level` (enum-like) to d
 - Subscription selectors: adopted as `subscription_selectors (subscription_id, integration_id?, tag?)`.
   - Constraints: one of integration_id or tag required; UNIQUE(subscription_id, integration_id) and UNIQUE(subscription_id, lower(tag)).
   - Default when no selectors present: no delivery (pending) until selectors added.
+- Subscription tiers (personal | small_business | enterprise): define env-driven default and future quotas; enforcement out of MVP scope.
 
 ## Event Updates & Reminders
 - Event-relative reminders via Temporal Schedules (idempotent naming) and rescheduling on start_date changes.
-- Ad-hoc "remind me in N hours" via Temporal durable timers (asyncio.sleep for python I think)
+- Ad-hoc "remind me in N hours" via Temporal durable timers (use `workflow.sleep` in workflows)
 
 ## API & Security
 - Unsubscribe tokens: opaque random tokens, 60-day TTL, single-use, stored server-side.

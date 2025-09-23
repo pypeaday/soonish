@@ -6,6 +6,8 @@ This document defines every possible user interaction workflow in the Soonish no
 
 ---
 
+Note on Terminology: “Subscriber” refers to a person; “Subscription” is the record linking an event to a user. Delivery is resolved via `subscription_selectors` (integration_ids and/or tags). “Participant” may appear as a synonym; we prefer subscriber/subscription.
+
 ## User Types & Authentication States
 
 ### 1. Anonymous Users
@@ -40,6 +42,7 @@ Conventions:
 - is_verified: bool default false
 - created_at: datetime default now
 - Relationships: `events` (1:N), `integrations` (1:N)
+  - Note: for anonymous flows, a fallback display name (e.g., from email local-part) may be used to satisfy NOT NULL.
 
 ### events
 - id: int PK
@@ -324,6 +327,12 @@ Schedule Architecture:
 - Reminder schedules: managed via Temporal Schedules
 - No long-lived workflow.sleep reminder tasks
 - Cleanup schedules on event completion/cancellation
+- Ad-hoc reminders (e.g., "remind me in 12 hours") use Temporal SDK workflow.sleep for durability
+
+Flow per Reminder:
+1. Temporal Schedule triggers ReminderWorkflow(kind)
+2. ReminderWorkflow executes send_notification activity
+3. Deliver reminder via resolved selectors (integration_ids and/or tags)
 ```
 
 ## Workflow 3: Event Subscription Workflows
@@ -369,30 +378,31 @@ Prerequisites:
 Flow:
 1. User visits event page (authenticated)
 2. System displays event details + notification preferences
-3. User selects one integration from their available integrations
-4. System creates Subscription record with user_id and integration_id
+3. User selects integrations and/or tags from their available options
+4. System creates Subscription(event_id, user_id) and persists SubscriptionSelector rows for chosen integration_ids and/or tags
 5. System signals EventWorkflow with participant_added
 6. EventWorkflow triggers notification activity
-7. Notification activity delivers via the subscription's integration
+7. Notification activity delivers via resolved selectors
 
 Database Changes:
-- INSERT Subscription(event_id, user_id, integration_id)
+- INSERT Subscription(event_id, user_id)
+- INSERT SubscriptionSelector rows (integration_id and/or tag)
 
 Temporal Signals:
-- EventWorkflow.participant_added({subscription_id, user_id, integration_id})
+- EventWorkflow.participant_added({subscription_id, user_id})
 
 Notification Flow:
-- Deliver via the selected integration
-- If integration is inactive or missing, mark delivery as `pending`
+- Deliver via resolved selectors (integration_ids and/or tags)
+- If no active targets resolve, mark delivery as `pending`
 ```
 
 ### 3.3 Subscription Notification Routing Logic
 ```
-Notification Routing Algorithm (Per-subscription integration):
+Notification Routing Algorithm (Selector-based):
 1. Load subscriptions (or restrict to `subscription_ids` if provided by the caller).
 2. For each subscription:
-   a. Load the associated integration and ensure it is active
-   b. Deliver via the integration's apprise_url; if inactive/missing, mark pending
+   a. Load selectors; resolve integration_ids ∪ user integrations matching tags (active only); dedupe
+   b. Deliver via each resolved integration's apprise_url; if none resolve, mark pending
 3. Execute notification delivery via Apprise and collect per-target results.
 ```
 
@@ -528,14 +538,14 @@ Implementation:
 Flow per Reminder:
 1. Temporal Schedule triggers ReminderWorkflow(kind)
 2. ReminderWorkflow executes send_notification activity
-3. Deliver reminder via the subscription's integration
+3. Deliver reminder via resolved selectors (integration_ids and/or tags)
 ```
 
 ### 6.2 Reminder Notification Routing
 ```
 Routing Logic:
 1. Query all Subscriptions for event
-2. For each subscription, deliver via its integration's apprise_url (if inactive/missing, mark pending)
+2. For each subscription, deliver via resolved selectors (integration_ids and/or tags); if none resolve, mark pending
 3. Log delivery results
 
 Content Generation:
@@ -585,13 +595,14 @@ Prerequisites:
 
 Flow:
 1. User accesses event subscription settings
-2. User adds or removes subscriptions for specific integrations (one integration per subscription)
+2. User adds or removes selectors for specific integrations or tags
 3. System validates that each integration belongs to the user and is active
 4. Changes take effect for future notifications
 
 Database Changes:
-- INSERT Subscription(event_id, user_id, integration_id)
-- DELETE Subscription WHERE event_id = ? AND user_id = ? AND integration_id = ?
+- INSERT Subscription(event_id, user_id) (if missing)
+- INSERT SubscriptionSelector(subscription_id, integration_id?) and/or SubscriptionSelector(subscription_id, tag?)
+- DELETE SubscriptionSelector WHERE subscription_id = ? AND (integration_id = ? OR lower(tag) = lower(?))
 
 Validation:
 - Ensure each integration ID belongs to the user
@@ -605,7 +616,7 @@ Validation:
 Automated Cleanup:
 - EventWorkflow timeout (30 days)
 - Past event cleanup (configurable)
-- Unverified user cleanup (7 days)
+- Unverified user cleanup (60 days)
 - Session cleanup (expired sessions)
 
 Manual Administration:
@@ -740,11 +751,11 @@ Note (MVP): UserVerificationWorkflow and SessionManagementWorkflow are handled o
 - Workflow `EventWorkflow.run(event_id: int, event_data: dict) -> str`
   - `event_data` minimally includes: `name: str`, `start_date: ISO8601 str`, `is_public: bool`.
  - Signals
-  - `participant_added(participant: { subscription_id: int, user_id?: int, integration_id: int })`
+  - `participant_added(participant: { subscription_id: int, user_id?: int })`
   - `participant_removed(participant: { email: str })`
   - `event_updated(updated: { start_date?: ISO8601 str, name?: str, ... })`
   - `send_manual_notification(title: str, body: str, subscription_ids?: list[int], notification_level: str = "info")`
- - Activities
+  - Activities
   - `send_notification(event_id: int, notification_level: str, title: str, body: str, subscription_ids?: list[int]) -> { delivered: int, failed: int, results: list }`
   - `notification_level` values (MVP): info | warning | critical (permissive validation; unknown values may be accepted and mapped best-effort)
 
@@ -754,7 +765,7 @@ Note (MVP): UserVerificationWorkflow and SessionManagementWorkflow are handled o
 
 ### Data Protection
 - Integration URLs encrypted at rest
-- Email addresses hashed for anonymous users
+- Intent (future): email hashing for anonymous flows
 - Session tokens cryptographically secure
 - API keys stored in environment variables only
 
