@@ -3,7 +3,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
 
-from src.db.models import User, Event, Integration, Subscription, SubscriptionSelector
+from src.db.models import User, Event, Integration, Subscription
 
 
 class UserRepository:
@@ -77,7 +77,7 @@ class IntegrationRepository:
     async def get_by_user(self, user_id: int, active_only: bool = True) -> List[Integration]:
         query = select(Integration).where(Integration.user_id == user_id)
         if active_only:
-            query = query.where(Integration.is_active == True)
+            query = query.where(Integration.is_active)
         result = await self.session.execute(query)
         return list(result.scalars().all())
     
@@ -92,7 +92,7 @@ class IntegrationRepository:
             )
         )
         if active_only:
-            query = query.where(Integration.is_active == True)
+            query = query.where(Integration.is_active)
         result = await self.session.execute(query)
         return list(result.scalars().all())
     
