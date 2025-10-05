@@ -26,7 +26,7 @@ uv pip install \
     fastapi uvicorn \
     sqlalchemy aiosqlite \
     cryptography \
-    python-jose passlib[bcrypt] \
+    python-jose passlib \
     httpx
 ```
 
