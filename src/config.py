@@ -18,9 +18,11 @@ class Settings(BaseSettings):
     secret_key: str = ""
     debug: bool = True
     
-    # SMTP (optional for now)
+    # SMTP
     smtp_host: str = ""
     smtp_port: int = 587
+    smtp_app_user: str = ""
+    smtp_app_password: str = ""
     
     model_config = {
         "env_file": ".env"
