@@ -3,7 +3,8 @@
 # dependencies = [
 # ]
 # ///
-import os, smtplib
+import os
+import smtplib
 from email.mime.text import MIMEText
 
 # SMTP_APP_USER="notifiq.hello@gmail.com"

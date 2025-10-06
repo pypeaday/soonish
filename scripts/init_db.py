@@ -46,7 +46,6 @@ async def seed_sample_data(engine):
     
     # Import here to ensure encryption is set up
     os.environ['ENCRYPTION_KEY'] = ENCRYPTION_KEY
-    from src.db.encryption import encrypt_field
     
     async_session = async_sessionmaker(engine, expire_on_commit=False)
     
@@ -128,7 +127,7 @@ async def seed_sample_data(engine):
         
         await session.commit()
         
-        print(f"\n✅ Sample data created:")
+        print("\n✅ Sample data created:")
         print(f"   - Users: {organizer.email}, {subscriber.email}")
         print(f"   - Event ID: {event.id} ({event.name})")
         print(f"   - Subscription ID: {subscription.id}")
@@ -166,7 +165,7 @@ async def main():
     await inspect_db(engine)
     
     # Show encryption key
-    print(f"\n🔑 Encryption key (add to .env):")
+    print("\n🔑 Encryption key (add to .env):")
     print(f"   ENCRYPTION_KEY={ENCRYPTION_KEY}")
     
     print("\n" + "=" * 60)
