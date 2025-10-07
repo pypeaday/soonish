@@ -5,11 +5,92 @@
 
 ---
 
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Environment Variables Reference](#environment-variables-reference)
+3. [Phase 0: Project Setup](#phase-0-project-setup-30-minutes)
+4. [Phase 1: Database Layer](#phase-1-database-layer-1-day)
+5. [Phase 2: Configuration & Dependencies](#phase-2-configuration--dependencies-30-minutes)
+6. [Phase 3: Basic FastAPI Setup](#phase-3-basic-fastapi-setup-1-hour)
+7. [Phase 4: Authentication](#phase-4-authentication-1-day)
+8. [Phase 5: Events API](#phase-5-events-api-1-day)
+9. [Phase 6: Temporal Integration](#phase-6-temporal-integration-1-day)
+10. [Phase 7: Subscriptions API](#phase-7-subscriptions-api-1-day)
+11. [Phase 8: Notification System](#phase-8-notification-system-1-day)
+12. [Phase 9: Temporal Schedules](#phase-9-temporal-schedules-1-day)
+13. [Current Project Structure](#current-project-structure-after-phase-9)
+14. [Phase 10: Integrations API](#phase-10-integrations-api-1-day)
+15. [Phase 11: Custom Reminder Preferences](#phase-11-custom-reminder-preferences-1-day)
+16. [Testing Strategy](#testing-strategy)
+17. [Post-MVP Enhancements](#post-mvp-enhancements)
+18. [Quick Reference Commands](#quick-reference-commands)
+19. [Dependency Checklist](#dependency-checklist)
+
+---
+
 ## Overview
 
-This plan breaks Soonish into **10 phases** that build on each other. Each phase is **1-3 days of work** and has clear acceptance criteria.
+This plan breaks Soonish into **11 phases** that build on each other. Each phase is **1 day of work** and has clear acceptance criteria.
 
 **Philosophy**: Build thin vertical slices. Each phase should result in something you can test/demo.
+
+**What's Included:**
+- Complete environment setup guide
+- Database models with encryption
+- FastAPI REST API with JWT auth
+- Temporal workflows for event orchestration
+- Multi-channel notifications via Apprise
+- Temporal Schedules for reminders
+- Anonymous + authenticated subscriptions
+- Comprehensive testing strategy
+
+**Key Architectural Decisions:**
+- **Selector-based subscriptions**: Users specify integrations by ID OR tag (flexible routing)
+- **Service vs User config**: Service SMTP in .env, user integrations in database
+- **Temporal Schedules**: For reminder timing (not workflow.sleep) to handle event time changes
+- **Hardcoded reminders in Phase 9**: T-1d and T-1h defaults, custom reminders in Phase 11
+- **Apprise abstraction**: Users provide natural config (Gotify URL + token), backend converts to Apprise URLs
+
+---
+
+## Environment Variables Reference
+
+**Complete `.env` file** - Add these as you progress through phases:
+
+```bash
+# Phase 1: Database
+DATABASE_URL=sqlite+aiosqlite:///soonish.db
+
+# Phase 2: Security & Encryption
+ENCRYPTION_KEY=<generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
+SECRET_KEY=<generate with: python -c "import secrets; print(secrets.token_urlsafe(32))">
+DEBUG=true
+
+# Phase 4: Authentication
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+# Phase 6: Temporal
+TEMPORAL_URL=localhost:7233
+TEMPORAL_TASK_QUEUE=soonish-task-queue
+
+# Phase 8: Service-Level SMTP (for sending emails on behalf of users)
+GMAIL_USER=your_service_email@gmail.com
+GMAIL_APP_PASSWORD=your_gmail_app_password
+PROTON_USER=your_service_email@proton.me
+PROTON_APP_PASSWORD=your_proton_app_password
+
+# Optional: User-level integrations (for dogfooding/testing)
+# These go in the database via API, not .env:
+# - GOTIFY_URL (via POST /api/integrations)
+# - GOTIFY_TOKEN (via POST /api/integrations)
+```
+
+**Key Distinctions:**
+- **Service-level** (in `.env`): Credentials Soonish uses to send notifications
+- **User-level** (in database): Credentials users provide for their own channels
+- See Phase 8 for detailed configuration architecture
 
 ---
 
@@ -95,6 +176,29 @@ Build **in this order** (dependencies matter):
 6. `UnsubscribeToken` (depends on Subscription)
 
 Copy from `specifications/data-models.md` - SQLAlchemy Models section.
+
+**Key Model Details:**
+
+**SubscriptionSelector** - Implements OR logic for notification routing:
+- Has EITHER `integration_id` (FK to integrations) OR `tag` (string)
+- Never both - enforced at application level
+- Allows two patterns:
+  - Specific: "send to my Gotify integration #5"
+  - Tag-based: "send to all my 'urgent' integrations"
+- Tags are automatically lowercased via SQLAlchemy event listener
+
+**UnsubscribeToken** - One-time use tokens for anonymous unsubscribe:
+- Generated when user subscribes (especially anonymous users)
+- 30-day expiry (configurable)
+- Token is 32-byte random hex string
+- Marked as `used_at` when consumed
+- Cleanup job deletes expired tokens (future phase)
+
+**Integration** - User's notification channels:
+- `apprise_url_encrypted` - Fernet-encrypted Apprise URL
+- `tag` - Lowercase string for grouping (e.g., "urgent", "email")
+- `is_active` - Soft delete flag
+- Encryption key from environment variable
 
 #### 1.4 Session Management (`src/db/session.py`)
 
@@ -973,6 +1077,36 @@ class SubscriptionResponse(BaseModel):
 
 #### 7.2 Subscriptions Route (`src/api/routes/subscriptions.py`)
 
+**Endpoint**: `POST /api/events/{event_id}/subscribe`
+
+**Anonymous Subscription Flow:**
+1. User provides email (and optionally name)
+2. System creates or finds user by email
+3. Creates default `mailto://` integration for user
+4. Creates subscription with selector pointing to email integration
+5. Generates unsubscribe token (30-day expiry)
+6. Signals EventWorkflow with `participant_added`
+7. Returns subscription details + unsubscribe token
+
+**Authenticated Subscription Flow:**
+1. User already logged in (has JWT)
+2. User specifies which integrations to use:
+   - `integration_ids: [1, 3]` - specific integrations
+   - `tags: ["urgent"]` - all integrations with tag "urgent"
+   - Both can be combined
+3. Creates subscription with selectors for each
+4. Generates unsubscribe token
+5. Signals EventWorkflow
+6. Returns subscription details
+
+**Key Implementation Details:**
+- Anonymous users get auto-created with `is_verified=False`
+- Default integration created: `mailto://{email}` with tag "email"
+- Selectors created for each integration_id and tag specified
+- If no selectors specified (anonymous), defaults to tag "email"
+- Unsubscribe token included in response for email links
+- Workflow signal is non-critical (continues if signal fails)
+
 Copy subscribe endpoint from `specifications/api-specification.md` - Subscribe to Event section.
 
 #### 7.3 EventWorkflow Integration
@@ -987,16 +1121,34 @@ curl -X POST http://localhost:8000/api/events/1/subscribe \
   -H "Content-Type: application/json" \
   -d '{"email":"subscriber@example.com","name":"Test Subscriber"}'
 
+# Authenticated subscribe with specific integrations
+curl -X POST http://localhost:8000/api/events/1/subscribe \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"integration_ids":[1,2]}'
+
+# Authenticated subscribe with tags
+curl -X POST http://localhost:8000/api/events/1/subscribe \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tags":["urgent","email"]}'
+
 # Check workflow received signal in Temporal UI
+# Check database for subscription and selectors
 ```
 
 ### Acceptance Criteria
 
 - ✅ Anonymous user can subscribe with email
-- ✅ Creates user if doesn't exist
-- ✅ Creates subscription + selector
+- ✅ Creates user if doesn't exist (is_verified=False)
+- ✅ Creates default mailto:// integration for anonymous users
+- ✅ Creates subscription + selectors (integration_id OR tag)
+- ✅ Authenticated users can specify integration_ids
+- ✅ Authenticated users can specify tags
 - ✅ Workflow receives `participant_added` signal
-- ✅ Generates unsubscribe token
+- ✅ Generates unsubscribe token (30-day expiry)
+- ✅ Returns unsubscribe token in response
+- ✅ Prevents duplicate subscriptions (same user + event)
 
 **Files created**: `src/api/routes/subscriptions.py`
 
@@ -1626,41 +1778,86 @@ curl -X PUT http://localhost:8000/api/events/1 \
 
 ## Phase 9: Temporal Schedules (1 day)
 
-**Goal**: Automatic reminders at T-1d, T-1h before events.
+**Goal**: Automatic reminders at T-1d, T-1h before events using Temporal Schedules.
+
+**Known Limitation**: This phase implements **hardcoded system default reminders** (T-1d and T-1h for all events). Users cannot customize reminder times yet. See Phase 11 for per-subscription custom reminders.
+
+### Why Temporal Schedules?
+
+**Problem**: Event times can change. If we use `workflow.sleep`, reminders become stale:
+- Event scheduled for Jan 15, reminder sleeps until Jan 14
+- Organizer moves event to Jan 10
+- Reminder still fires Jan 14 (4 days late!)
+
+**Solution**: Temporal Schedules can be deleted/recreated when event times change.
 
 ### Build Order
 
-#### 9.1 ReminderWorkflow (`src/workflows/reminder.py`)
+#### 9.1 Schedule Management Activities (`src/activities/schedules.py`)
 
-Copy from `specifications/temporal-specification.md` - ReminderWorkflow section.
-
-#### 9.2 Schedule Management Activities (`src/activities/notifications.py`)
-
-Add `create_reminder_schedules` and `delete_reminder_schedules` from spec.
-
-#### 9.3 EventWorkflow Integration
-
-Implement schedule creation/deletion:
+Create activities to manage Temporal Schedules:
 
 ```python
-# In EventWorkflow.run()
-await workflow.execute_activity(
-    create_reminder_schedules,
-    args=[event_id, event_data['start_date']],
-    start_to_close_timeout=timedelta(seconds=60)
-)
+@activity.defn
+async def create_reminder_schedules(event_id: int, start_date_iso: str) -> dict:
+    """Create Temporal Schedules for T-1d and T-1h reminders"""
+    # Parse start date
+    # Calculate reminder times (start_date - 1 day, start_date - 1 hour)
+    # Skip if reminder time is in the past
+    # Create Temporal Schedule for each reminder
+    # Return list of created schedule IDs
 
-# In finally block
-await workflow.execute_activity(
-    delete_reminder_schedules,
-    event_id,
-    start_to_close_timeout=timedelta(seconds=60)
-)
+@activity.defn
+async def delete_reminder_schedules(event_id: int) -> dict:
+    """Delete all reminder schedules for an event"""
+    # Connect to Temporal
+    # Delete schedules: event-{id}-reminder-1day, event-{id}-reminder-1hour
+    # Handle "not found" gracefully (idempotent)
 ```
 
-#### 9.4 Worker Configuration
+#### 9.2 ReminderWorkflow (`src/workflows/reminder.py`)
 
-Register ReminderWorkflow and schedule activities.
+Short-lived workflow triggered by Temporal Schedules:
+
+```python
+@workflow.defn
+class ReminderWorkflow:
+    @workflow.run
+    async def run(self, event_id: int, reminder_type: str) -> str:
+        """Send scheduled reminder notification"""
+        # Get current event details (may have changed since schedule created)
+        # Send reminder notification via send_reminder_notification activity
+        # Return success
+```
+
+#### 9.3 Reminder Activity (`src/activities/reminders.py`)
+
+Already created - formats reminder messages and calls `send_notification_to_subscribers`.
+
+#### 9.4 EventWorkflow Integration
+
+Update EventWorkflow to manage schedules:
+
+```python
+# In EventWorkflow.run() - after validating event
+await workflow.execute_activity(
+    create_reminder_schedules,
+    args=[event_id, details['start_date']],
+    start_to_close_timeout=timedelta(minutes=1)
+)
+
+# In event_updated signal - if start_date changed
+if updated_data.get('start_date') != self.event_data.get('start_date'):
+    await workflow.execute_activity(delete_reminder_schedules, event_id, ...)
+    await workflow.execute_activity(create_reminder_schedules, ...)
+
+# In finally block or cancel_event signal
+await workflow.execute_activity(delete_reminder_schedules, event_id, ...)
+```
+
+#### 9.5 Worker Configuration
+
+Register ReminderWorkflow in worker.
 
 ### Testing
 
@@ -1684,8 +1881,93 @@ curl -X POST http://localhost:8000/api/events \
 - ✅ Reminders sent to all subscribers
 - ✅ Schedules deleted when event ends
 - ✅ Schedules recreated when start_date changes
+- ✅ Schedules skipped if reminder time is in past
+- ✅ Schedule deletion is idempotent (handles "not found")
+- ✅ Schedule creation is idempotent (handles "already exists")
 
-**Files created**: `src/workflows/reminder.py`
+**Files created**: 
+- `src/workflows/reminder.py`
+- `src/activities/schedules.py`
+- `src/activities/reminders.py`
+- `scripts/test_phase_9.sh`
+
+**Files updated**:
+- `src/workflows/event.py` - Added schedule management
+- `src/worker/main.py` - Registered ReminderWorkflow and schedule activities
+
+---
+
+## Current Project Structure (After Phase 9)
+
+```
+soonish/
+├── src/
+│   ├── activities/
+│   │   ├── events.py              # Event validation activities
+│   │   ├── notification_builder.py # Builds Apprise instances from DB
+│   │   ├── notifications.py        # Send notification activities
+│   │   ├── reminders.py           # Reminder notification formatting
+│   │   └── schedules.py           # Temporal Schedule management
+│   │
+│   ├── api/
+│   │   ├── routes/
+│   │   │   ├── auth.py            # Login, register, JWT
+│   │   │   ├── events.py          # Event CRUD
+│   │   │   ├── health.py          # Health check + Temporal status
+│   │   │   └── subscriptions.py   # Subscribe to events
+│   │   ├── dependencies.py        # FastAPI dependencies (auth, DB, Temporal)
+│   │   ├── main.py               # FastAPI app setup
+│   │   └── schemas.py            # Pydantic request/response models
+│   │
+│   ├── db/
+│   │   ├── base.py               # SQLAlchemy base + timestamp mixin
+│   │   ├── encryption.py         # Fernet encryption for sensitive fields
+│   │   ├── models.py             # All database models
+│   │   ├── repositories.py       # Data access layer
+│   │   └── session.py            # Async session management
+│   │
+│   ├── workflows/
+│   │   ├── event.py              # EventWorkflow (main orchestrator)
+│   │   └── reminder.py           # ReminderWorkflow (triggered by schedules)
+│   │
+│   ├── worker/
+│   │   └── main.py               # Temporal worker registration
+│   │
+│   └── config.py                 # Environment config (Pydantic Settings)
+│
+├── scripts/
+│   ├── init_db.py                # Database initialization + sample data
+│   ├── test_notifications.py     # Test notification system
+│   └── test_phase_9.sh          # Test reminder schedules
+│
+├── docs/
+│   ├── implementation/
+│   │   └── phase-plan.md         # This file
+│   └── specifications/
+│       ├── api-specification.md
+│       ├── data-models.md
+│       └── temporal-specification.md
+│
+├── .env                          # Environment variables (not in git)
+├── .env.example                  # Template for .env
+├── pyproject.toml               # uv dependencies
+└── soonish.db                   # SQLite database (dev only)
+```
+
+**Key Import Dependencies:**
+- `api/routes/*` → `db/repositories` → `db/models`
+- `api/routes/events` → `api/dependencies` → Temporal client
+- `workflows/*` → `activities/*` (via unsafe.imports_passed_through)
+- `activities/*` → `db/repositories` → `db/models`
+- `worker/main` → registers all workflows + activities
+
+**Data Flow:**
+1. API receives request → validates with Pydantic schemas
+2. Route uses repository to query/update database
+3. Route starts/signals Temporal workflow (if needed)
+4. Workflow executes activities (database ops, notifications)
+5. Activities use repositories for database access
+6. Activities use Apprise SDK for notifications
 
 ---
 
@@ -1751,29 +2033,231 @@ curl -X POST http://localhost:8000/api/integrations/1/test \
 
 ---
 
+## Phase 11: Custom Reminder Preferences (1 day)
+
+**Goal**: Users can configure custom reminder times per subscription.
+
+**Current Limitation**: Phase 9 hardcodes T-1d and T-1h reminders for all events. Users should be able to set their own reminder preferences.
+
+### Design Decision: Subscription-Level Reminders
+
+Each subscription can have custom reminder offsets. This allows:
+- Per-event customization (e.g., "remind me 2 days before this concert")
+- Opt-out of reminders (empty list)
+- Multiple reminders per event (e.g., 1 week, 1 day, 1 hour)
+
+### Build Order
+
+#### 11.1 Database Migration
+
+Add `subscription_reminders` table:
+
+```sql
+CREATE TABLE subscription_reminders (
+    id INTEGER PRIMARY KEY,
+    subscription_id INTEGER NOT NULL,
+    offset_seconds INTEGER NOT NULL,  -- Seconds before event (e.g., 86400 = 1 day)
+    created_at DATETIME NOT NULL,
+    FOREIGN KEY(subscription_id) REFERENCES subscriptions(id)
+);
+
+CREATE INDEX ix_subscription_reminders_subscription_id 
+ON subscription_reminders(subscription_id);
+```
+
+#### 11.2 Update Subscription Schema
+
+```python
+# src/api/schemas.py
+class SubscribeRequest(BaseModel):
+    email: str | None = None
+    name: str | None = None
+    integration_ids: list[int] | None = None
+    tags: list[str] | None = None
+    reminder_offsets: list[int] | None = None  # NEW: seconds before event
+    # Examples: [86400, 3600] = 1 day, 1 hour
+    # Empty list = no reminders
+    # None = use system defaults (T-1d, T-1h)
+```
+
+#### 11.3 Update Schedule Creation Activity
+
+Modify `create_reminder_schedules` to accept subscription-specific reminders:
+
+```python
+@activity.defn
+async def create_reminder_schedules(
+    event_id: int,
+    start_date_iso: str,
+    subscription_reminders: dict[int, list[int]] | None = None
+) -> dict:
+    """
+    Create Temporal Schedules for event reminders.
+    
+    Args:
+        event_id: Event database ID
+        start_date_iso: Event start date as ISO8601 string
+        subscription_reminders: Optional dict of {subscription_id: [offset_seconds]}
+                               If None, uses system defaults (T-1d, T-1h)
+    """
+    # If no custom reminders, use defaults
+    if subscription_reminders is None:
+        reminders = [
+            {"type": "1day", "offset": timedelta(days=1)},
+            {"type": "1hour", "offset": timedelta(hours=1)}
+        ]
+    else:
+        # Create schedule per subscription per reminder
+        # Schedule ID: event-{event_id}-sub-{sub_id}-reminder-{offset}
+        pass
+```
+
+#### 11.4 Update EventWorkflow
+
+Pass subscription reminder data to schedule creation:
+
+```python
+# Get all subscriptions with their reminder preferences
+subscription_reminders = await workflow.execute_activity(
+    get_subscription_reminders,
+    event_id,
+    ...
+)
+
+# Create schedules with custom reminders
+await workflow.execute_activity(
+    create_reminder_schedules,
+    args=[event_id, details['start_date'], subscription_reminders],
+    ...
+)
+```
+
+#### 11.5 User Preferences Endpoint (Optional)
+
+Add endpoint for users to set default reminder preferences:
+
+```python
+# POST /api/users/me/reminder-preferences
+{
+    "default_reminders": [86400, 3600, 900]  # 1d, 1h, 15min
+}
+```
+
+### Testing
+
+```bash
+# Subscribe with custom reminders (2 days, 1 hour)
+curl -X POST http://localhost:8000/api/events/1/subscribe \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "reminder_offsets": [172800, 3600]
+  }'
+
+# Subscribe with no reminders
+curl -X POST http://localhost:8000/api/events/1/subscribe \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "reminder_offsets": []
+  }'
+
+# Subscribe with system defaults (omit field)
+curl -X POST http://localhost:8000/api/events/1/subscribe \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{}'
+```
+
+### Acceptance Criteria
+
+- ✅ Users can specify custom reminder offsets when subscribing
+- ✅ Empty list = no reminders created
+- ✅ Null/omitted = system defaults (T-1d, T-1h)
+- ✅ Multiple reminders per subscription supported
+- ✅ Schedule IDs include subscription ID for uniqueness
+- ✅ Reminder preferences stored in database
+- ✅ Schedule recreation handles custom reminders on event update
+
+**Files created**:
+- Database migration for `subscription_reminders` table
+
+**Files updated**:
+- `src/api/schemas.py` - Add `reminder_offsets` to SubscribeRequest
+- `src/api/routes/subscriptions.py` - Store reminder preferences
+- `src/activities/schedules.py` - Support per-subscription reminders
+- `src/workflows/event.py` - Pass subscription reminders to schedule creation
+- `src/db/models.py` - Add SubscriptionReminder model
+- `src/db/repositories.py` - Add methods to query subscription reminders
+
+---
+
+## Testing Strategy
+
+### Running All Tests
+
+```bash
+# 1. Start Temporal server (Terminal 1)
+temporal server start-dev
+
+# 2. Start worker (Terminal 2)
+uv run python -m src.worker.main
+
+# 3. Start API server (Terminal 3)
+uv run uvicorn src.api.main:app --reload
+
+# 4. Run phase-specific tests
+uv run scripts/init_db.py              # Phase 1: Database
+uv run scripts/test_notifications.py   # Phase 8: Notifications
+./scripts/test_phase_9.sh             # Phase 9: Reminders
+```
+
+### Verification Checklist
+
+**After Each Phase:**
+1. Run `uv run ruff check --fix .` - All checks pass
+2. Check Temporal UI (http://localhost:8233) - Workflows visible
+3. Check database - `sqlite3 soonish.db ".tables"` shows expected tables
+4. Test API endpoints - Use curl commands from phase testing sections
+5. Check logs - No errors in worker/API output
+
+**Integration Test Flow:**
+1. Create user: `POST /api/auth/register`
+2. Login: `POST /api/auth/login` → get token
+3. Create event: `POST /api/events` → starts EventWorkflow
+4. Subscribe: `POST /api/events/{id}/subscribe` → signals workflow
+5. Update event: `PUT /api/events/{id}` → sends notification + recreates schedules
+6. Check Gotify/email for notifications
+7. Verify in Temporal UI: EventWorkflow running, schedules created
+
+**Common Issues:**
+- Worker not picking up workflows → Check `TEMPORAL_TASK_QUEUE` matches in config and worker
+- Notifications not sending → Check integration `is_active=true` and `apprise_url` is valid
+- Schedules not firing → Check reminder time is in future, check Temporal UI schedules tab
+- Database errors → Run `uv run scripts/init_db.py` to reset
+
+---
+
 ## Post-MVP Enhancements
 
-After Phase 10, you have a working MVP. Future phases:
+After Phase 11, you have a working MVP with custom reminders. Future phases:
 
-### Phase 11: Frontend (HTMX + Alpine.js)
+### Phase 12: Frontend (HTMX + Alpine.js)
 - Event creation form
-- Subscription page
+- Subscription page with reminder configuration
 - Integration management UI
 
-### Phase 12: Email Verification
+### Phase 13: Email Verification
 - Verification tokens
 - Email sending (SMTP)
 - Verified user features
 
-### Phase 13: Private Events
+### Phase 14: Private Events
 - Event visibility controls
 - Invitation system
 
-### Phase 14: Event Memberships
+### Phase 15: Event Memberships
 - Multi-organizer support
 - Role-based permissions
 
-### Phase 15: Production Readiness
+### Phase 16: Production Readiness
 - Rate limiting (IP-based with logging)
 - Monitoring/observability
 - PostgreSQL migration
@@ -1824,47 +2308,70 @@ class RateLimiter:
 
 ---
 
-## Development Tips
+## Quick Reference Commands
 
-### Daily Workflow
+### Daily Development Workflow
 
 ```bash
-# Morning: Fresh database
+# Start all services (3 terminals)
+temporal server start-dev              # Terminal 1
+uv run python -m src.worker.main       # Terminal 2  
+uv run uvicorn src.api.main:app --reload  # Terminal 3
+
+# Reset database (when needed)
 uv run scripts/init_db.py
 
-# Start services
-temporal server start-dev &
-uv run python -m src.worker.main &
-uvicorn src.api.main:app --reload &
+# Get auth token
+TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"organizer@example.com","password":"password123"}' \
+  | jq -r '.access_token')
 
-# Build features
-vim src/api/routes/events.py
+# Create event
+curl -X POST http://localhost:8000/api/events \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Test Event","start_date":"2025-10-10T10:00:00Z","end_date":"2025-10-10T11:00:00Z"}'
 
-# Test
-curl http://localhost:8000/api/events
+# Subscribe to event
+curl -X POST http://localhost:8000/api/events/1/subscribe \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com"}'
 
-# Check code
-uv run ruff check --fix
-
-# Commit
-git add .
-git commit -m "feat: add event creation endpoint"
+# Check code quality
+uv run ruff check --fix .
 ```
 
-### When Stuck
+### Debugging Tools
 
-1. **Check specs**: `docs/specifications/` has all the answers
-2. **Inspect DB**: `sqlite3 soonish.db`
-3. **Check Temporal UI**: `http://localhost:8233`
-4. **Check logs**: Worker and API both print useful info
-5. **Blow away DB**: `uv run scripts/init_db.py`
+```bash
+# Inspect database
+sqlite3 soonish.db
+> .tables
+> SELECT * FROM users;
+> .quit
 
-### Common Issues
+# Check Temporal workflows
+open http://localhost:8233
 
-**Import errors**: Make sure you're in the virtual environment
-**Database locked**: Close SQLite connections
-**Workflow not starting**: Check worker is running and task queue name matches
-**Auth failing**: Regenerate JWT secret key
+# View worker logs
+uv run python -m src.worker.main  # Watch for activity execution
+
+# Test notifications
+uv run scripts/test_notifications.py
+
+# Test reminders
+./scripts/test_phase_9.sh
+```
+
+### When Things Break
+
+1. **Import errors** → Activate venv: `source .venv/bin/activate`
+2. **Database locked** → Close all SQLite connections, restart API
+3. **Workflow not starting** → Check `TEMPORAL_TASK_QUEUE` in .env matches worker
+4. **Auth failing** → Regenerate `SECRET_KEY` in .env
+5. **Notifications not sending** → Check integration `is_active=true`, verify Apprise URL
+6. **Nuclear option** → `rm soonish.db && uv run scripts/init_db.py`
 
 ---
 
