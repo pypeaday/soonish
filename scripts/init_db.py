@@ -47,6 +47,9 @@ async def seed_sample_data(engine):
     # Import here to ensure encryption is set up
     os.environ['ENCRYPTION_KEY'] = ENCRYPTION_KEY
     
+    # Import password hashing
+    from src.api.auth.password import hash_password
+    
     async_session = async_sessionmaker(engine, expire_on_commit=False)
     
     async with async_session() as session:
@@ -55,7 +58,7 @@ async def seed_sample_data(engine):
         organizer = User(
             email="organizer@example.com",
             name="Event Organizer",
-            password_hash="$2b$12$dummy_hash_for_dev",  # Password: "password123"
+            password_hash=hash_password("password123"),  # Real bcrypt hash
             is_verified=True
         )
         session.add(organizer)

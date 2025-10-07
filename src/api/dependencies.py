@@ -30,6 +30,7 @@ async def get_temporal_client() -> Client:
     if _temporal_client is None:
         settings = get_settings()
         _temporal_client = await Client.connect(settings.temporal_url)
+    # TODO: Add connection health check and reconnection logic
     return _temporal_client
 
 

@@ -3,6 +3,7 @@ import secrets
 from src.db.models import User
 
 # In-memory session store (use Redis in production)
+# TODO: CRITICAL - Replace with Redis/DB table for production
 _sessions: dict[str, dict] = {}
 
 

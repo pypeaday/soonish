@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from temporalio import workflow
 from temporalio.client import Client
 from src.api.schemas import EventCreateRequest, EventUpdateRequest, EventResponse
 from src.api.dependencies import get_session, get_current_user, get_temporal_client
@@ -39,8 +40,7 @@ async def create_event(
         organizer_user_id=current_user.id
     )
     event = await repo.create(event)
-    await session.commit()
-    await session.refresh(event)
+    await session.flush()
     
     # Start Temporal workflow
     event_data = {
@@ -59,10 +59,15 @@ async def create_event(
         )
     except Exception as e:
         # Event exists but workflow failed - log and return error
+        await session.rollback()
         raise HTTPException(
             status_code=500,
             detail=f"Event created but workflow failed to start: {str(e)}"
         )
+
+    # Commit and refresh
+    await session.commit()
+    await session.refresh(event)
     
     return event
 
@@ -123,6 +128,7 @@ async def update_event(
             "location": event.location
         })
     except Exception:
+        workflow.logger.warning("Failed to signal workflow for event %s", event_id)
         # Non-critical if signal fails - workflow will use stale data
         pass
     
@@ -152,6 +158,7 @@ async def delete_event(
         await handle.signal(EventWorkflow.cancel_event)
     except Exception:
         # Continue with deletion even if cancellation fails
+        workflow.logger.warning("Failed to cancel workflow for event %s", event_id)
         pass
     
     await repo.delete(event)

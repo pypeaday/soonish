@@ -18,6 +18,9 @@ dependencies = [
     "cryptography>=46.0.2",
     "python-jose>=3.5.0",
     "passlib>=1.7.4",
+    "pydantic-settings>=2.11.0",
+    "email-validator>=2.3.0",
+    "bcrypt<5.0.0",
 ]
 
 [build-system]

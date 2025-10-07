@@ -1,4 +1,4 @@
-from sqlalchemy import String, Boolean, LargeBinary, Text, ForeignKey, DateTime, event as sa_event
+from sqlalchemy import String, Boolean, LargeBinary, Text, ForeignKey, DateTime, Index, event as sa_event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
@@ -36,6 +36,10 @@ class User(Base, TimestampMixin):
 
 class Event(Base, TimestampMixin):
     __tablename__ = "events"
+    __table_args__ = (
+        Index('ix_events_start_date', 'start_date'),
+        Index('ix_events_public_start', 'is_public', 'start_date'),
+    )
     
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -110,6 +114,9 @@ def lowercase_tag(mapper, connection, target):
 
 class Subscription(Base, TimestampMixin):
     __tablename__ = "subscriptions"
+    __table_args__ = (
+        Index('ix_subscriptions_event_user', 'event_id', 'user_id', unique=True),
+    )
     
     id: Mapped[int] = mapped_column(primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True, nullable=False)
@@ -165,6 +172,9 @@ def lowercase_selector_tag(mapper, connection, target):
 
 class UnsubscribeToken(Base):
     __tablename__ = "unsubscribe_tokens"
+    __table_args__ = (
+        Index('ix_unsubscribe_expires', 'expires_at'),
+    )
     
     token: Mapped[str] = mapped_column(String(64), primary_key=True)
     subscription_id: Mapped[int] = mapped_column(

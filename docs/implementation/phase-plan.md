@@ -141,6 +141,41 @@ uv run scripts/test_db.py  # From database-setup.md
 
 **Files created**: `src/db/{base,models,encryption,session,repositories}.py`, `scripts/init_db.py`
 
+### 1.7 Database Performance Indexes
+
+**Critical indexes for query performance** (add after Phase 7 when you have real queries):
+
+```python
+# In src/db/models.py, add to Event model:
+from sqlalchemy import Index
+
+# After Event class definition:
+__table_args__ = (
+    Index('ix_events_start_date', 'start_date'),
+    Index('ix_events_public_start', 'is_public', 'start_date'),
+)
+
+# In Subscription model:
+__table_args__ = (
+    Index('ix_subscriptions_event_user', 'event_id', 'user_id', unique=True),
+)
+
+# In UnsubscribeToken model:
+__table_args__ = (
+    Index('ix_unsubscribe_expires', 'expires_at'),
+)
+```
+
+**Why these indexes?**
+- `ix_events_start_date` - For "upcoming events" queries
+- `ix_events_public_start` - Composite index for public event listing sorted by date
+- `ix_subscriptions_event_user` - Prevents duplicate subscriptions, speeds up lookups
+- `ix_unsubscribe_expires` - For cleanup jobs that delete expired tokens
+
+**When to add**: After Phase 7 when subscriptions are working. Not critical for dev but essential before production.
+
+**Files created**: `src/db/{base,models,encryption,session,repositories}.py`, `scripts/init_db.py`
+
 ---
 
 ## Phase 2: Configuration & Dependencies (30 minutes)
@@ -1193,11 +1228,53 @@ After Phase 10, you have a working MVP. Future phases:
 - Role-based permissions
 
 ### Phase 15: Production Readiness
-- Rate limiting
+- Rate limiting (IP-based with logging)
 - Monitoring/observability
 - PostgreSQL migration
 - Redis for sessions
 - Docker deployment
+
+**Rate Limiting Implementation**:
+```python
+# src/api/middleware/rate_limit.py
+from fastapi import Request, HTTPException
+from collections import defaultdict
+from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
+
+class RateLimiter:
+    def __init__(self, requests_per_minute: int = 60):
+        self.requests_per_minute = requests_per_minute
+        self.requests: dict[str, list[datetime]] = defaultdict(list)
+    
+    async def check_rate_limit(self, request: Request):
+        # Get client IP (handle proxies)
+        client_ip = request.client.host
+        if forwarded := request.headers.get("X-Forwarded-For"):
+            client_ip = forwarded.split(",")[0].strip()
+        
+        now = datetime.now()
+        minute_ago = now - timedelta(minutes=1)
+        
+        # Clean old requests
+        self.requests[client_ip] = [
+            req_time for req_time in self.requests[client_ip]
+            if req_time > minute_ago
+        ]
+        
+        # Check limit
+        if len(self.requests[client_ip]) >= self.requests_per_minute:
+            logger.warning(
+                f"Rate limit exceeded for IP {client_ip} on {request.url.path}"
+            )
+            raise HTTPException(status_code=429, detail="Too many requests")
+        
+        # Record request
+        self.requests[client_ip].append(now)
+        logger.info(f"Request from {client_ip} to {request.url.path}")
+```
 
 ---
 

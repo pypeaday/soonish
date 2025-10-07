@@ -47,14 +47,19 @@ class EventWorkflow:
         end_date = datetime.fromisoformat(details["end_date"]) if details.get("end_date") else None
         
         # Wait until event ends or is cancelled
+        # TODO: Validate the end date so it's not infinity or something crazy
         if end_date:
-            try:
-                await workflow.wait_condition(
-                    lambda: self.is_cancelled or workflow.now() >= end_date,
-                    timeout=timedelta(days=365)  # Max 1 year
-                )
-            except Exception:
-                pass
+            wait_timeout = end_date - workflow.now()
+        else:
+            wait_timeout = timedelta(days=365)
+
+        try:
+            await workflow.wait_condition(
+                lambda: self.is_cancelled or workflow.now() >= end_date,
+                timeout=wait_timeout
+            )
+        except Exception:
+            pass
         
         if self.is_cancelled:
             return f"Event {event_id} cancelled"
@@ -70,6 +75,16 @@ class EventWorkflow:
     async def event_updated(self, updated_data: dict):
         """Signal that event was updated"""
         self.event_data.update(updated_data)
+    
+    @workflow.signal
+    async def participant_added(self, participant_data: dict):
+        """Signal that a participant subscribed to the event"""
+        # For now, just log it - Phase 8 will use this for notifications
+        workflow.logger.info(
+            f"Participant added to event {self.event_id}: "
+            f"subscription_id={participant_data.get('subscription_id')}, "
+            f"user_id={participant_data.get('user_id')}"
+        )
     
     @workflow.query
     def get_status(self) -> dict:

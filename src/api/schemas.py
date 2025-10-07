@@ -1,11 +1,12 @@
-from pydantic import BaseModel, EmailStr
-from datetime import datetime
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
+from datetime import datetime, timezone, timedelta
 
 
 class HealthResponse(BaseModel):
     status: str
     timestamp: datetime
     version: str
+    temporal: str
 
 
 class UserResponse(BaseModel):
@@ -44,6 +45,19 @@ class EventCreateRequest(BaseModel):
     location: str | None = None
     is_public: bool = True
 
+    @field_validator("start_date")
+    @classmethod
+    def validate_start_date(cls, v):
+        if v < datetime.now(timezone.utc) - timedelta(hours=1):
+            raise ValueError("Start date cannot be more than 1 hour in the past")
+        return v
+
+    @model_validator(mode="after")
+    def validate_end_date(self):
+        if self.end_date and self.end_date < self.start_date:
+            raise ValueError("End date must be after start_date")
+        return self
+
 
 class EventUpdateRequest(BaseModel):
     name: str | None = None
@@ -68,3 +82,20 @@ class EventResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+class SubscribeRequest(BaseModel):
+    # For anonymous
+    email: EmailStr | None = None
+    name: str | None = None
+    
+    # For authenticated
+    integration_ids: list[int] | None = None
+    tags: list[str] | None = None
+
+
+class SubscriptionResponse(BaseModel):
+    subscription_id: int
+    event_id: int
+    user_id: int
+    selectors: list[dict]
