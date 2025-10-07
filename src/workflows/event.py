@@ -1,4 +1,4 @@
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -43,8 +43,13 @@ class EventWorkflow:
         if not details:
             return f"Could not load event {event_id} details"
         
-        # Parse event times
-        end_date = datetime.fromisoformat(details["end_date"]) if details.get("end_date") else None
+        # Parse event times (ensure timezone-aware for comparison with workflow.now())
+        end_date = None
+        if details.get("end_date"):
+            end_date = datetime.fromisoformat(details["end_date"])
+            # Ensure timezone-aware (workflow.now() returns UTC)
+            if end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
         
         # Wait until event ends or is cancelled
         # TODO: Validate the end date so it's not infinity or something crazy

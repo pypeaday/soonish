@@ -8,6 +8,9 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from cryptography.fernet import Fernet
+from src.config import get_settings
+
+settings = get_settings()
 
 # Add src to path
 import sys
@@ -21,7 +24,7 @@ DB_PATH = Path(__file__).parent.parent / "soonish.db"
 DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH}"
 
 # Encryption key (auto-generate for dev)
-ENCRYPTION_KEY = Fernet.generate_key().decode()
+ENCRYPTION_KEY = settings.encryption_key
 
 
 async def drop_and_create_db():
@@ -43,9 +46,6 @@ async def drop_and_create_db():
 async def seed_sample_data(engine):
     """Add sample data for testing"""
     print("\n🌱 Seeding sample data")
-    
-    # Import here to ensure encryption is set up
-    os.environ['ENCRYPTION_KEY'] = ENCRYPTION_KEY
     
     # Import password hashing
     from src.api.auth.password import hash_password

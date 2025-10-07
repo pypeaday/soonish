@@ -158,6 +158,7 @@ def main():
                 print(f"   Status: {response.status_code}")
         print()
         
+        breakpoint()
         # Summary
         print("=" * 38)
         print("✅ Phase 7 Tests Completed Successfully")
