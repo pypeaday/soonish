@@ -3,11 +3,9 @@ Database initialization script for development.
 Blows away existing DB and creates fresh schema with sample data.
 """
 import asyncio
-import os
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from cryptography.fernet import Fernet
 from src.config import get_settings
 
 settings = get_settings()

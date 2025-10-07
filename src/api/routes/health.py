@@ -12,7 +12,9 @@ async def health_check(
     temporal_client: Client = Depends(get_temporal_client)
 ):
     try:
-        await temporal_client.workflow.get_system_info()
+        # Simple check: verify we can list workflows (proves connection works)
+        async for _ in temporal_client.list_workflows(""):
+            break
         temporal_status = "healthy"
     except Exception:
         temporal_status = "unhealthy"
