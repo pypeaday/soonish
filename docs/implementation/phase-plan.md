@@ -1004,77 +1004,623 @@ curl -X POST http://localhost:8000/api/events/1/subscribe \
 
 ## Phase 8: Notification System (1 day)
 
-**Goal**: Notifications delivered via Apprise.
+**Goal**: Notifications delivered via Apprise SDK to multiple channels (Gotify, Email, SMS).
+
+### Configuration Architecture
+
+**IMPORTANT: Understand the distinction between service-level and user-level configuration.**
+
+#### Service-Level Configuration (in `src/config.py`)
+These are credentials **Soonish/Notifiq uses** to send notifications on behalf of users:
+
+- **SMTP Settings** (Gmail/ProtonMail) - Service sends FROM these addresses
+  - Used for: verification emails, system notifications, fallback email notifications
+  - Example: Service sends email FROM `notifications@soonish.app` TO `user@example.com`
+  - Gmail for unverified users, ProtonMail for verified users
+
+#### User-Level Configuration (in database `integrations` table)
+These are credentials **users provide** for their own notification channels:
+
+- **Gotify** - User provides: Gotify server URL + API token
+- **Email** - User provides: Email address
+- **SMS** - User provides: Phone number + carrier
+- **Slack** - User provides: Webhook URL
+- **Discord** - User provides: Webhook URL
+- **Any other service** - User provides whatever config that service needs
+
+**Apprise is an implementation detail** - Users should never see "apprise_url" in the API. The Integrations API should accept natural fields like:
+- `{"type": "gotify", "url": "https://my-server.com", "token": "ABC123"}`
+- `{"type": "email", "address": "user@example.com"}`
+- `{"type": "sms", "phone": "+15551234567", "carrier": "verizon"}`
+
+The backend converts these to Apprise URLs internally. This abstraction allows us to:
+1. Support non-Apprise integrations in the future
+2. Provide better validation and UX
+3. Change notification backends without breaking user configs
+
+**Example Flow:**
+1. User creates Gotify integration: `POST /api/integrations` with `{"type": "gotify", "url": "https://my-server.com", "token": "ABC123"}`
+2. Backend stores as encrypted `apprise_url: "gotify://my-server.com/ABC123"` (internal detail)
+3. User subscribes to event with that integration
+4. When notification fires, service uses Apprise to deliver to user's Gotify server
+
+**Development/Dogfooding:**
+- As a developer, you create your own integrations in the database (like any user would)
+- Your Gotify URL/token goes in the `integrations` table via the API, not in `.env`
+- The `scripts/dev_integrations.py` script shows how Apprise works internally (for testing)
+
+### Dependencies
+
+```bash
+uv add apprise
+```
 
 ### Build Order
 
-#### 8.1 Notification Activities (`src/activities/notifications.py`)
+#### 8.1 Configuration (`src/config.py`)
 
-Copy from `specifications/temporal-specification.md` - Notification Activities section.
-
-**Note**: For development, you can run a mock Apprise server or use real services.
-
-#### 8.2 Mock Apprise Server (for testing)
+Add **service-level** SMTP settings (users provide their own Gotify/SMS via Integrations API):
 
 ```python
-# scripts/mock_apprise.py
-from fastapi import FastAPI
-import uvicorn
-
-app = FastAPI()
-
-@app.post("/notify")
-async def notify(payload: dict):
-    print(f"📧 Mock notification sent:")
-    print(f"   Title: {payload.get('title')}")
-    print(f"   Body: {payload.get('body')}")
-    print(f"   Type: {payload.get('type')}")
-    return {"status": "success"}
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="localhost", port=8001)
+class Settings(BaseSettings):
+    # ... existing fields ...
+    
+    # SMTP (Service-level - Notifiq sends FROM these addresses)
+    # Used for: verification emails, system notifications, fallback email notifications
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_app_user: str = ""
+    smtp_app_password: str = ""
+    
+    # SMTP (Gmail for unverified users)
+    gmail_user: str = ""
+    gmail_app_password: str = ""
+    smtp_server_gmail: str = "smtp.gmail.com"
+    
+    # SMTP (ProtonMail for verified users)
+    proton_user: str = ""
+    proton_app_password: str = ""
+    smtp_server_proton: str = "smtp.protonmail.ch"
+    
+    # Note: User-level integrations (Gotify, SMS, etc.) are stored in the database
+    # Users provide their own Gotify URLs/tokens, phone numbers, etc. via Integrations API
 ```
 
-#### 8.3 Worker Configuration
+#### 8.2 Notification Builder (`src/activities/notification_builder.py`)
+
+Helper to construct Apprise instances from database integrations:
+
+```python
+import apprise
+from src.db.session import get_db_session
+from src.db.repositories import IntegrationRepository, SubscriptionRepository
+from src.config import get_settings
+
+
+class NotificationBuilder:
+    """Build Apprise instances from user integrations"""
+    
+    @staticmethod
+    async def build_for_user(user_id: int, tags: list[str] | None = None) -> apprise.Apprise:
+        """Build Apprise instance for a single user's integrations"""
+        async for session in get_db_session():
+            repo = IntegrationRepository(session)
+            integrations = await repo.list_by_user(user_id)
+            
+            apobj = apprise.Apprise()
+            for integration in integrations:
+                if not integration.is_active:
+                    continue
+                
+                # Filter by tags if specified
+                if tags and integration.tag not in tags:
+                    continue
+                
+                # Add integration with tag
+                apobj.add(integration.apprise_url, tag=integration.tag)
+            
+            return apobj
+    
+    @staticmethod
+    async def build_for_event_subscribers(
+        event_id: int,
+        selector_tags: list[str] | None = None
+    ) -> dict[int, apprise.Apprise]:
+        """Build Apprise instances for all event subscribers
+        
+        Returns: {user_id: apprise_instance}
+        """
+        async for session in get_db_session():
+            sub_repo = SubscriptionRepository(session)
+            int_repo = IntegrationRepository(session)
+            
+            # Get all subscriptions for event
+            subscriptions = await sub_repo.list_by_event(event_id)
+            
+            result = {}
+            for subscription in subscriptions:
+                # Get integration IDs from selectors
+                integration_ids = [
+                    selector.integration_id 
+                    for selector in subscription.selectors
+                    if selector.integration_id is not None
+                ]
+                
+                # Get selector tags
+                sub_tags = [
+                    selector.tag 
+                    for selector in subscription.selectors
+                    if selector.tag is not None
+                ]
+                
+                # Filter by selector_tags if specified
+                if selector_tags:
+                    sub_tags = [t for t in sub_tags if t in selector_tags]
+                
+                # Build Apprise instance
+                apobj = apprise.Apprise()
+                
+                # Add integrations by ID
+                for int_id in integration_ids:
+                    integration = await int_repo.get_by_id(int_id)
+                    if integration and integration.is_active:
+                        apobj.add(integration.apprise_url, tag=integration.tag)
+                
+                # Add integrations by tag
+                if sub_tags:
+                    user_integrations = await int_repo.list_by_user(subscription.user_id)
+                    for integration in user_integrations:
+                        if integration.is_active and integration.tag in sub_tags:
+                            apobj.add(integration.apprise_url, tag=integration.tag)
+                
+                result[subscription.user_id] = apobj
+            
+            return result
+    
+    @staticmethod
+    def build_fallback_email(email: str, is_verified: bool = False) -> apprise.Apprise:
+        """Build fallback email notification for users without integrations"""
+        settings = get_settings()
+        apobj = apprise.Apprise()
+        
+        if is_verified and settings.proton_user:
+            # Use ProtonMail for verified users
+            apobj.add(
+                f'mailtos://?to={email}'
+                f'&smtp={settings.smtp_server_proton}'
+                f'&user={settings.proton_user}'
+                f'&pass={settings.proton_app_password}'
+                f'&from=Soonish <{settings.proton_user}>'
+            )
+        elif settings.gmail_user:
+            # Use Gmail for unverified users
+            apobj.add(
+                f'mailtos://?to={email}'
+                f'&smtp={settings.smtp_server_gmail}'
+                f'&user={settings.gmail_user}'
+                f'&pass={settings.gmail_app_password}'
+                f'&from=Soonish <{settings.gmail_user}>'
+            )
+        
+        return apobj
+```
+
+#### 8.3 Notification Activities (`src/activities/notifications.py`)
+
+Core notification activities:
+
+```python
+from temporalio import activity
+from src.activities.notification_builder import NotificationBuilder
+from src.db.session import get_db_session
+from src.db.repositories import UserRepository
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@activity.defn
+async def send_notification(
+    user_id: int,
+    title: str,
+    body: str,
+    level: str = "info",  # info | warning | critical
+    tags: list[str] | None = None
+) -> dict:
+    """Send notification to a single user
+    
+    Returns: {
+        "success": int,
+        "failed": int,
+        "channels": list[str],
+        "errors": list[str]
+    }
+    """
+    try:
+        # Build Apprise instance for user
+        apobj = await NotificationBuilder.build_for_user(user_id, tags)
+        
+        # Check if user has any integrations
+        if len(apobj) == 0:
+            # Fallback to email
+            async for session in get_db_session():
+                user_repo = UserRepository(session)
+                user = await user_repo.get_by_id(user_id)
+                if user:
+                    apobj = NotificationBuilder.build_fallback_email(
+                        user.email,
+                        user.is_verified
+                    )
+        
+        # Send notification
+        if len(apobj) > 0:
+            result = apobj.notify(body=body, title=title)
+            
+            return {
+                "success": 1 if result else 0,
+                "failed": 0 if result else 1,
+                "channels": [str(s) for s in apobj.urls()],
+                "errors": [] if result else ["Notification failed"]
+            }
+        else:
+            return {
+                "success": 0,
+                "failed": 1,
+                "channels": [],
+                "errors": ["No notification channels configured"]
+            }
+    
+    except Exception as e:
+        logger.error(f"Notification failed for user {user_id}: {e}")
+        return {
+            "success": 0,
+            "failed": 1,
+            "channels": [],
+            "errors": [str(e)]
+        }
+
+
+@activity.defn
+async def send_notification_to_subscribers(
+    event_id: int,
+    title: str,
+    body: str,
+    level: str = "info",
+    selector_tags: list[str] | None = None
+) -> dict:
+    """Send notification to all event subscribers
+    
+    Returns: {
+        "total_subscribers": int,
+        "success": int,
+        "failed": int,
+        "details": list[dict]
+    }
+    """
+    try:
+        # Build Apprise instances for all subscribers
+        subscribers = await NotificationBuilder.build_for_event_subscribers(
+            event_id,
+            selector_tags
+        )
+        
+        total = len(subscribers)
+        success = 0
+        failed = 0
+        details = []
+        
+        # Send to each subscriber
+        for user_id, apobj in subscribers.items():
+            try:
+                if len(apobj) > 0:
+                    result = apobj.notify(body=body, title=title)
+                    if result:
+                        success += 1
+                        details.append({
+                            "user_id": user_id,
+                            "status": "success",
+                            "channels": len(apobj)
+                        })
+                    else:
+                        failed += 1
+                        details.append({
+                            "user_id": user_id,
+                            "status": "failed",
+                            "error": "Notification failed"
+                        })
+                else:
+                    # No integrations, try fallback email
+                    async for session in get_db_session():
+                        user_repo = UserRepository(session)
+                        user = await user_repo.get_by_id(user_id)
+                        if user:
+                            fallback = NotificationBuilder.build_fallback_email(
+                                user.email,
+                                user.is_verified
+                            )
+                            result = fallback.notify(body=body, title=title)
+                            if result:
+                                success += 1
+                                details.append({
+                                    "user_id": user_id,
+                                    "status": "success",
+                                    "channels": 1,
+                                    "fallback": "email"
+                                })
+                            else:
+                                failed += 1
+                                details.append({
+                                    "user_id": user_id,
+                                    "status": "failed",
+                                    "error": "Fallback email failed"
+                                })
+            except Exception as e:
+                failed += 1
+                details.append({
+                    "user_id": user_id,
+                    "status": "failed",
+                    "error": str(e)
+                })
+        
+        return {
+            "total_subscribers": total,
+            "success": success,
+            "failed": failed,
+            "details": details
+        }
+    
+    except Exception as e:
+        logger.error(f"Failed to send notifications for event {event_id}: {e}")
+        return {
+            "total_subscribers": 0,
+            "success": 0,
+            "failed": 0,
+            "details": [],
+            "error": str(e)
+        }
+```
+
+#### 8.4 Worker Configuration (`src/worker/main.py`)
 
 Register notification activities:
 
 ```python
-from src.activities.notifications import send_notification
+from src.activities.notifications import (
+    send_notification,
+    send_notification_to_subscribers
+)
 
 worker = Worker(
-    ...,
-    activities=[..., send_notification]
+    client,
+    task_queue=settings.temporal_task_queue,
+    workflows=[EventWorkflow],
+    activities=[
+        validate_event_exists,
+        get_event_details,
+        send_notification,
+        send_notification_to_subscribers
+    ]
 )
+```
+
+#### 8.5 EventWorkflow Integration (`src/workflows/event.py`)
+
+Add notification calls to EventWorkflow (placeholder for Phase 9 schedules):
+
+```python
+# In EventWorkflow.run(), after event validation:
+
+# TODO Phase 9: Add reminder scheduling here
+# For now, just log that notifications would be sent
+workflow.logger.info(
+    f"Event {event_id} ready for notifications. "
+    f"Reminders will be added in Phase 9."
+)
+
+# Handle event_updated signal - notify subscribers
+@workflow.signal
+async def event_updated(self, updated_data: dict) -> None:
+    self.event_data = updated_data
+    
+    # Send update notification to subscribers
+    await workflow.execute_activity(
+        send_notification_to_subscribers,
+        args=[
+            self.event_id,
+            f"Event Updated: {updated_data.get('name', 'Event')}",
+            f"The event has been updated. Check the details for changes.",
+            "info"
+        ],
+        start_to_close_timeout=timedelta(minutes=2)
+    )
 ```
 
 ### Testing
 
-```bash
-# Terminal 1: Start mock Apprise
-uv run python scripts/mock_apprise.py
+#### Manual Testing Script (`scripts/test_notifications.py`)
 
-# Terminal 2: Trigger notification via workflow signal
-curl -X POST http://localhost:8000/api/events/1/notify \
+```python
+"""Test notification system with real integrations"""
+import asyncio
+from src.db.session import get_db_session
+from src.db.repositories import UserRepository, IntegrationRepository, EventRepository
+from src.activities.notification_builder import NotificationBuilder
+from src.activities.notifications import send_notification, send_notification_to_subscribers
+from temporalio import activity
+from temporalio.testing import ActivityEnvironment
+
+
+async def test_notification_builder():
+    """Test building Apprise instances from database"""
+    print("Testing NotificationBuilder...")
+    
+    async for session in get_db_session():
+        # Get test user
+        user_repo = UserRepository(session)
+        user = await user_repo.get_by_email("test@example.com")
+        
+        if not user:
+            print("❌ Test user not found. Run scripts/init_db.py first.")
+            return
+        
+        # Build Apprise instance
+        apobj = await NotificationBuilder.build_for_user(user.id)
+        print(f"✅ Built Apprise instance with {len(apobj)} integrations")
+        
+        # List integrations
+        int_repo = IntegrationRepository(session)
+        integrations = await int_repo.list_by_user(user.id)
+        for integration in integrations:
+            print(f"  - {integration.name} ({integration.tag})")
+
+
+async def test_send_notification():
+    """Test sending notification to a user"""
+    print("\nTesting send_notification activity...")
+    
+    async for session in get_db_session():
+        user_repo = UserRepository(session)
+        user = await user_repo.get_by_email("test@example.com")
+        
+        if not user:
+            print("❌ Test user not found")
+            return
+        
+        # Run activity in test environment
+        async with ActivityEnvironment() as env:
+            result = await env.run(
+                send_notification,
+                user.id,
+                "Test Notification",
+                "This is a test notification from Soonish!",
+                "info"
+            )
+            
+            print(f"✅ Notification result: {result}")
+            if result["success"] > 0:
+                print(f"  Sent to channels: {result['channels']}")
+            if result["errors"]:
+                print(f"  Errors: {result['errors']}")
+
+
+async def test_send_to_subscribers():
+    """Test sending notification to event subscribers"""
+    print("\nTesting send_notification_to_subscribers activity...")
+    
+    async for session in get_db_session():
+        event_repo = EventRepository(session)
+        events = await event_repo.list_public_events(limit=1)
+        
+        if not events:
+            print("❌ No events found")
+            return
+        
+        event = events[0]
+        
+        # Run activity in test environment
+        async with ActivityEnvironment() as env:
+            result = await env.run(
+                send_notification_to_subscribers,
+                event.id,
+                f"Test: {event.name}",
+                "This is a test notification to all subscribers!",
+                "info"
+            )
+            
+            print(f"✅ Notification result:")
+            print(f"  Total subscribers: {result['total_subscribers']}")
+            print(f"  Success: {result['success']}")
+            print(f"  Failed: {result['failed']}")
+            
+            for detail in result.get('details', []):
+                status = detail['status']
+                user_id = detail['user_id']
+                print(f"  - User {user_id}: {status}")
+
+
+async def main():
+    await test_notification_builder()
+    await test_send_notification()
+    await test_send_to_subscribers()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+#### Testing Steps
+
+```bash
+# 1. Install Apprise
+uv add apprise
+
+# 2. Add SERVICE-LEVEL SMTP settings to .env (for sending emails)
+echo "GMAIL_USER=your_service_email@gmail.com" >> .env
+echo "GMAIL_APP_PASSWORD=your_app_password" >> .env
+# Optional: ProtonMail for verified users
+echo "PROTON_USER=your_service_email@proton.me" >> .env
+echo "PROTON_APP_PASSWORD=your_app_password" >> .env
+
+# 3. Ensure database has integrations
+uv run scripts/init_db.py
+
+# 4. Create USER-LEVEL integration (dogfooding - your own Gotify server)
+TOKEN=$(curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}' \
+  | jq -r '.access_token')
+
+# Create your Gotify integration (replace with your server/token)
+curl -X POST http://localhost:8000/api/integrations \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "title": "Test Notification",
-    "body": "This is a test",
-    "notification_level": "info"
+    "name": "My Gotify",
+    "apprise_url": "gotify://gotify.paynepride.com/YOUR_TOKEN/?priority=normal",
+    "tag": "urgent"
   }'
 
-# Check mock Apprise logs
+# 5. Test notification builder
+uv run scripts/test_notifications.py
+
+# 6. Test with worker (Terminal 1)
+uv run python -m src.worker.main
+
+# 7. Update an event to trigger notification (Terminal 2)
+curl -X PUT http://localhost:8000/api/events/1 \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Updated Event","location":"New Location"}'
+
+# 8. Check YOUR Gotify server for notification
 ```
 
 ### Acceptance Criteria
 
-- ✅ `send_notification` activity executes
-- ✅ Calls Apprise API with correct payload
-- ✅ Handles 424 partial failures gracefully
+- ✅ Apprise dependency installed
+- ✅ Service-level SMTP configured (Gmail/ProtonMail for sending emails)
+- ✅ User-level integrations stored in database (Gotify URLs, etc.)
+- ✅ `NotificationBuilder` constructs Apprise instances from database integrations
+- ✅ `send_notification` activity sends to single user
+- ✅ `send_notification_to_subscribers` activity sends to all event subscribers
+- ✅ Fallback email works for users without integrations (uses service SMTP)
+- ✅ Tag-based filtering works (e.g., only "urgent" notifications)
+- ✅ Handles partial failures gracefully
 - ✅ Returns delivery statistics
+- ✅ EventWorkflow sends notification on event update
+- ✅ Real Gotify notifications received during testing (to user's own server)
+- ✅ Configuration architecture clearly documented (service vs user level)
 
-**Files created**: `src/activities/notifications.py`, `scripts/mock_apprise.py`
+**Files created**: 
+- `src/activities/notification_builder.py`
+- `src/activities/notifications.py`
+- `scripts/test_notifications.py`
+
+**Files updated**: 
+- `src/config.py`
+- `src/worker/main.py`
+- `src/workflows/event.py`
+
 
 ---
 

@@ -4,6 +4,7 @@ from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from src.activities.events import validate_event_exists, get_event_details
+    from src.activities.notifications import send_notification_to_subscribers
 
 
 @workflow.defn
@@ -43,6 +44,13 @@ class EventWorkflow:
         if not details:
             return f"Could not load event {event_id} details"
         
+        # TODO Phase 9: Add reminder scheduling here
+        # For now, just log that notifications would be sent
+        workflow.logger.info(
+            f"Event {event_id} ready for notifications. "
+            f"Reminders will be added in Phase 9."
+        )
+        
         # Parse event times (ensure timezone-aware for comparison with workflow.now())
         end_date = None
         if details.get("end_date"):
@@ -80,6 +88,18 @@ class EventWorkflow:
     async def event_updated(self, updated_data: dict):
         """Signal that event was updated"""
         self.event_data.update(updated_data)
+        
+        # Send update notification to subscribers
+        await workflow.execute_activity(
+            send_notification_to_subscribers,
+            args=[
+                self.event_id,
+                f"Event Updated: {updated_data.get('name', 'Event')}",
+                "The event has been updated. Check the details for changes.",
+                "info"
+            ],
+            start_to_close_timeout=timedelta(minutes=2)
+        )
     
     @workflow.signal
     async def participant_added(self, participant_data: dict):

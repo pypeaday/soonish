@@ -131,6 +131,10 @@ class SubscriptionRepository:
         )
         return list(result.scalars().all())
     
+    async def list_by_event(self, event_id: int) -> List[Subscription]:
+        """Alias for get_by_event for consistency"""
+        return await self.get_by_event(event_id)
+    
     async def get_by_event_and_user(
         self, event_id: int, user_id: int
     ) -> Optional[Subscription]:
