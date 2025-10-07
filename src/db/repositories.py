@@ -65,6 +65,16 @@ class EventRepository:
     async def update(self, event: Event) -> Event:
         await self.session.flush()
         return event
+    
+    async def delete(self, event: Event) -> None:
+        await self.session.delete(event)
+        await self.session.flush()
+    
+    async def list_public_events(self, skip: int = 0, limit: int = 100) -> List[Event]:
+        result = await self.session.execute(
+            select(Event).where(Event.is_public).offset(skip).limit(limit)
+        )
+        return list(result.scalars().all())
 
 
 class IntegrationRepository:

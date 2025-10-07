@@ -7,3 +7,4 @@
 - Integration `apprise_url` values are intended to be encrypted at rest in production; redact/avoid logging secret-bearing URLs or tokens.
 - Enforce lowercased tags for integrations/selectors; validate integration_ids belong to the authenticated user.
 - Apply basic rate limiting and circuit breaker patterns to notification activities to mitigate abuse and failing endpoints.
+- API rate limiting considerations: Defer implementation until Phase 15; simple decorator-based approach sufficient (no data model changes required).

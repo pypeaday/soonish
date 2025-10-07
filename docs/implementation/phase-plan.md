@@ -1,7 +1,6 @@
 #  Implementation Phase Plan
 
 **Status**: Authoritative  
-**Last Updated**: 2025-10-04  
 **Purpose**: Step-by-step build plan with clear dependencies and acceptance criteria.
 
 ---
@@ -26,12 +25,7 @@ uv venv
 source .venv/bin/activate
 
 # 2. Install core dependencies
-uv pip install \
-    fastapi uvicorn \
-    sqlalchemy aiosqlite \
-    cryptography \
-    python-jose passlib \
-    httpx
+uv add fastapi uvicorn sqlalchemy aiosqlite cryptography httpx
 
 # 3. Create .env file
 cp .env.example .env
@@ -249,6 +243,12 @@ python -c "from src.config import get_settings; print(get_settings().database_ur
 - ✅ Auto-generates keys if missing
 - ✅ `get_settings()` returns singleton
 
+### Common Issues
+
+- **bcrypt errors with Python 3.13**: Pin bcrypt to 4.x: `uv add "bcrypt<5.0.0"`
+- **EmailStr validation errors**: Install email-validator: `uv add email-validator`
+- **Import errors**: Ensure virtual environment is activated
+
 **Files created**: `src/config.py`, `src/api/dependencies.py`
 
 ---
@@ -313,7 +313,7 @@ app = FastAPI(
 )
 
 # Include routers
-app.include_router(health.router, prefix="/api")
+app.include_router(health.router)
 
 @app.get("/")
 async def root():
@@ -324,10 +324,10 @@ async def root():
 
 ```bash
 # Start server
-uvicorn src.api.main:app --reload
+uv run uvicorn src.api.main:app --reload
 
 # In another terminal, test
-curl http://localhost:8000/health
+curl http://localhost:8000/api/health
 
 # Check OpenAPI docs
 open http://localhost:8000/docs
@@ -336,7 +336,7 @@ open http://localhost:8000/docs
 ### Acceptance Criteria
 
 - ✅ Server starts without errors
-- ✅ `GET /health` returns 200
+- ✅ `GET /api/health` returns 200
 - ✅ Swagger UI accessible at `/docs`
 
 **Files created**: `src/api/{main,schemas}.py`, `src/api/routes/health.py`
@@ -346,6 +346,13 @@ open http://localhost:8000/docs
 ## Phase 4: Authentication (1 day)
 
 **Goal**: User registration, login, JWT/session auth working.
+
+### Dependencies
+
+```bash
+# Install auth dependencies
+uv add "python-jose[cryptography]" "passlib[bcrypt]" "bcrypt<5.0.0" email-validator
+```
 
 ### Build Order
 
@@ -389,6 +396,19 @@ Copy from `specifications/authentication.md` - Complete Auth Endpoints section.
 
 Add `get_current_user` and `get_current_user_optional` from `specifications/authentication.md`.
 
+#### 4.7 Test Endpoint (`src/api/main.py`)
+
+Add a protected endpoint to test authentication:
+
+```python
+@app.get("/api/users/me", response_model=UserResponse)
+async def get_current_user_info(
+    current_user: User = Depends(get_current_user)
+):
+    """Get current authenticated user info"""
+    return current_user
+```
+
 ### Testing
 
 ```bash
@@ -397,14 +417,23 @@ curl -X POST http://localhost:8000/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"password123","name":"Test User"}'
 
-# Login (JWT)
+# Login (returns both JWT and sets session cookie)
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"password123"}'
 
-# Use token
+# Extract token for testing
+TOKEN=$(curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}' \
+  | jq -r '.access_token')
+
+# Test protected endpoint without auth (should fail)
+curl http://localhost:8000/api/users/me
+
+# Test protected endpoint with JWT
 curl http://localhost:8000/api/users/me \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Acceptance Criteria
@@ -412,10 +441,15 @@ curl http://localhost:8000/api/users/me \
 - ✅ Can register new user
 - ✅ Can login with correct password
 - ✅ Login fails with wrong password
+- ✅ Login returns both JWT token and sets session cookie
 - ✅ JWT token works for authenticated endpoints
 - ✅ Session cookie works in browser
+- ✅ Protected endpoint returns 401 without auth
+- ✅ `/api/users/me` returns current user info
 
 **Files created**: `src/api/auth/{password,jwt,session}.py`, `src/api/routes/auth.py`
+
+**Files updated**: `src/api/main.py`
 
 ---
 
@@ -461,9 +495,25 @@ class EventResponse(BaseModel):
         from_attributes = True
 ```
 
-#### 5.2 Events Route (`src/api/routes/events.py`)
+#### 5.2 Repository Methods (`src/db/repositories.py`)
 
-Start with basic CRUD (no Temporal yet):
+Add these methods to `EventRepository`:
+
+```python
+async def delete(self, event: Event) -> None:
+    await self.session.delete(event)
+    await self.session.flush()
+
+async def list_public_events(self, skip: int = 0, limit: int = 100) -> List[Event]:
+    result = await self.session.execute(
+        select(Event).where(Event.is_public).offset(skip).limit(limit)
+    )
+    return list(result.scalars().all())
+```
+
+#### 5.3 Events Route (`src/api/routes/events.py`)
+
+Full CRUD implementation (no Temporal yet):
 
 ```python
 from fastapi import APIRouter, Depends, HTTPException
@@ -500,8 +550,7 @@ async def create_event(
     )
     event = await repo.create(event)
     await session.commit()
-    
-    # TODO Phase 6: Start Temporal workflow here
+    await session.refresh(event)
     
     return event
 
@@ -515,17 +564,82 @@ async def get_event(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return event
+
+@router.put("/{event_id}", response_model=EventResponse)
+async def update_event(
+    event_id: int,
+    request: EventUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """Update event (organizer only)"""
+    repo = EventRepository(session)
+    event = await repo.get_by_id(event_id)
+    
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    if event.organizer_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this event")
+    
+    # Update fields
+    if request.name is not None:
+        event.name = request.name
+    if request.description is not None:
+        event.description = request.description
+    if request.start_date is not None:
+        event.start_date = request.start_date
+    if request.end_date is not None:
+        event.end_date = request.end_date
+    if request.location is not None:
+        event.location = request.location
+    
+    await session.commit()
+    await session.refresh(event)
+    return event
+
+@router.delete("/{event_id}", status_code=204)
+async def delete_event(
+    event_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """Delete event (organizer only)"""
+    repo = EventRepository(session)
+    event = await repo.get_by_id(event_id)
+    
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    if event.organizer_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this event")
+    
+    await repo.delete(event)
+    await session.commit()
+    return None
+
+@router.get("", response_model=list[EventResponse])
+async def list_events(
+    session: AsyncSession = Depends(get_session),
+    skip: int = 0,
+    limit: int = 100
+):
+    """List all public events"""
+    repo = EventRepository(session)
+    events = await repo.list_public_events(skip=skip, limit=limit)
+    return events
 ```
 
 ### Testing
 
 ```bash
-# Create event (need auth token first)
+# Get auth token
 TOKEN=$(curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"organizer@example.com","password":"password123"}' \
+  -d '{"email":"test@example.com","password":"password123"}' \
   | jq -r '.access_token')
 
+# Create event
 curl -X POST http://localhost:8000/api/events \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -535,19 +649,49 @@ curl -X POST http://localhost:8000/api/events \
     "end_date": "2025-10-10T11:00:00Z"
   }'
 
-# Get event
+# Get event by ID (no auth required for public events)
 curl http://localhost:8000/api/events/1
+
+# List all public events
+curl http://localhost:8000/api/events
+
+# Update event (organizer only)
+curl -X PUT http://localhost:8000/api/events/1 \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Updated Event","location":"New Location"}'
+
+# Test authorization (create another user and try to update)
+TOKEN2=$(curl -X POST http://localhost:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user2@example.com","password":"password123","name":"User Two"}' \
+  | jq -r '.access_token')
+
+curl -X PUT http://localhost:8000/api/events/1 \
+  -H "Authorization: Bearer $TOKEN2" \
+  -d '{"name":"Hacked"}'
+# Should return 403 Forbidden
+
+# Delete event (organizer only)
+curl -X DELETE http://localhost:8000/api/events/1 \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Acceptance Criteria
 
 - ✅ Can create event (authenticated)
-- ✅ Can get event by ID
-- ✅ Event stored in database
-- ✅ Returns 401 if not authenticated
+- ✅ Can get event by ID (public access)
+- ✅ Can list all public events
+- ✅ Can update event (organizer only)
+- ✅ Can delete event (organizer only)
+- ✅ Event stored in database with workflow ID
+- ✅ Returns 401 if not authenticated (create/update/delete)
+- ✅ Returns 403 if not authorized (update/delete)
 - ✅ Returns 404 if event doesn't exist
 
 **Files created**: `src/api/routes/events.py`
+
+**Files updated**: `src/db/repositories.py`
 
 ---
 
@@ -560,28 +704,30 @@ curl http://localhost:8000/api/events/1
 #### 6.1 Install Temporal SDK
 
 ```bash
-uv pip install temporalio
+uv add temporalio
 ```
 
 #### 6.2 Event Activities (`src/activities/events.py`)
 
 ```python
 from temporalio import activity
-from src.db.session import get_session
+from src.db.session import get_db_session
 from src.db.repositories import EventRepository
+
 
 @activity.defn
 async def validate_event_exists(event_id: int) -> bool:
     """Validate event exists in database"""
-    async with get_session() as session:
+    async for session in get_db_session():
         repo = EventRepository(session)
         event = await repo.get_by_id(event_id)
         return event is not None
 
+
 @activity.defn
 async def get_event_details(event_id: int) -> dict | None:
     """Get current event details"""
-    async with get_session() as session:
+    async for session in get_db_session():
         repo = EventRepository(session)
         event = await repo.get_by_id(event_id)
         if not event:
@@ -634,14 +780,15 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-#### 6.5 Update Events API
+#### 6.5 Events API Integration
 
-Modify `src/api/routes/events.py` to start workflow:
+Integrate `src/api/routes/events.py` with Temporal workflow:
 
 ```python
 from src.api.dependencies import get_temporal_client
 from temporalio.client import Client
 from src.workflows.event import EventWorkflow
+from src.config import get_settings
 
 @router.post("", ...)
 async def create_event(
@@ -650,7 +797,7 @@ async def create_event(
 ):
     # ... create event in DB ...
     
-    # Start Temporal workflow
+    # Start Temporal workflow with error handling
     event_data = {
         "name": event.name,
         "start_date": event.start_date.isoformat(),
@@ -658,14 +805,67 @@ async def create_event(
         "location": event.location
     }
     
-    await temporal_client.start_workflow(
-        EventWorkflow.run,
-        args=[event.id, event_data],
-        id=workflow_id,
-        task_queue=settings.temporal_task_queue
-    )
+    try:
+        await temporal_client.start_workflow(
+            EventWorkflow.run,
+            args=[event.id, event_data],
+            id=workflow_id,
+            task_queue=settings.temporal_task_queue
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Event created but workflow failed to start: {str(e)}"
+        )
     
     return event
+```
+
+#### 6.6 Integrate Update/Delete with Workflows
+
+Add workflow signals to update and delete endpoints:
+
+```python
+# Update endpoint - signal workflow about changes
+@router.put("/{event_id}", ...)
+async def update_event(
+    ...,
+    temporal_client: Client = Depends(get_temporal_client)
+):
+    # ... update event in DB ...
+    
+    # Signal workflow about update
+    try:
+        handle = temporal_client.get_workflow_handle(event.temporal_workflow_id)
+        await handle.signal(EventWorkflow.event_updated, {
+            "name": event.name,
+            "start_date": event.start_date.isoformat(),
+            "end_date": event.end_date.isoformat() if event.end_date else None,
+            "location": event.location
+        })
+    except Exception:
+        pass  # Non-critical if signal fails
+    
+    return event
+
+# Delete endpoint - cancel workflow before deletion
+@router.delete("/{event_id}", ...)
+async def delete_event(
+    ...,
+    temporal_client: Client = Depends(get_temporal_client)
+):
+    # ... validate authorization ...
+    
+    # Cancel workflow before deleting
+    try:
+        handle = temporal_client.get_workflow_handle(event.temporal_workflow_id)
+        await handle.signal(EventWorkflow.cancel_event)
+    except Exception:
+        pass  # Continue with deletion even if cancellation fails
+    
+    await repo.delete(event)
+    await session.commit()
+    return None
 ```
 
 ### Testing
@@ -701,8 +901,13 @@ open http://localhost:8233
 - ✅ Workflow visible in Temporal UI
 - ✅ Workflow validates event exists
 - ✅ Workflow runs until event ends
+- ✅ Workflow start failure returns 500 error
+- ✅ Update event signals workflow with new data
+- ✅ Delete event cancels workflow before deletion
 
 **Files created**: `src/workflows/event.py`, `src/activities/events.py`, `src/worker/main.py`
+
+**Files updated**: `src/api/routes/events.py`
 
 ---
 
@@ -735,9 +940,9 @@ class SubscriptionResponse(BaseModel):
 
 Copy subscribe endpoint from `specifications/api-specification.md` - Subscribe to Event section.
 
-#### 7.3 Update EventWorkflow
+#### 7.3 EventWorkflow Integration
 
-Add `participant_added` signal handler (from `specifications/temporal-specification.md`).
+Implement `participant_added` signal handler (from `specifications/temporal-specification.md`).
 
 ### Testing
 
@@ -795,7 +1000,7 @@ if __name__ == "__main__":
     uvicorn.run(app, host="localhost", port=8001)
 ```
 
-#### 8.3 Update Worker
+#### 8.3 Worker Configuration
 
 Register notification activities:
 
@@ -852,9 +1057,9 @@ Copy from `specifications/temporal-specification.md` - ReminderWorkflow section.
 
 Add `create_reminder_schedules` and `delete_reminder_schedules` from spec.
 
-#### 9.3 Update EventWorkflow
+#### 9.3 EventWorkflow Integration
 
-Add schedule creation/deletion:
+Implement schedule creation/deletion:
 
 ```python
 # In EventWorkflow.run()
@@ -872,7 +1077,7 @@ await workflow.execute_activity(
 )
 ```
 
-#### 9.4 Update Worker
+#### 9.4 Worker Configuration
 
 Register ReminderWorkflow and schedule activities.
 
@@ -1037,6 +1242,49 @@ git commit -m "feat: add event creation endpoint"
 **Database locked**: Close SQLite connections
 **Workflow not starting**: Check worker is running and task queue name matches
 **Auth failing**: Regenerate JWT secret key
+
+---
+
+## Dependency Checklist
+
+| Package | Install Command | Purpose | Phase |
+|---------|----------------|---------|-------|
+| fastapi | `uv add fastapi` | API framework | 0 |
+| uvicorn | `uv add uvicorn` | ASGI server | 0 |
+| sqlalchemy | `uv add sqlalchemy` | ORM | 0 |
+| aiosqlite | `uv add aiosqlite` | Async SQLite | 0 |
+| cryptography | `uv add cryptography` | Encryption | 0 |
+| httpx | `uv add httpx` | HTTP client | 0 |
+| python-jose[cryptography] | `uv add "python-jose[cryptography]"` | JWT tokens | 4 |
+| passlib[bcrypt] | `uv add "passlib[bcrypt]"` | Password hashing | 4 |
+| bcrypt | `uv add "bcrypt<5.0.0"` | Hash backend (pinned for Python 3.13) | 4 |
+| email-validator | `uv add email-validator` | Email validation | 4 |
+| temporalio | `uv add temporalio` | Workflow engine | 6 |
+
+---
+
+## Quick Reference Commands
+
+```bash
+# Start API server
+uv run uvicorn src.api.main:app --reload
+
+# Run database init
+uv run python scripts/init_db.py
+
+# Check code quality
+uv run ruff check --fix
+
+# Get auth token
+TOKEN=$(curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"password"}' \
+  | jq -r '.access_token')
+
+# Use token in requests
+curl http://localhost:8000/api/users/me \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 ---
 
