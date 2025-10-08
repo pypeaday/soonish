@@ -1998,14 +1998,32 @@ class IntegrationResponse(BaseModel):
 
 #### 10.2 Integrations Route (`src/api/routes/integrations.py`)
 
-Copy from `specifications/api-specification.md` - Integrations API section.
+**Endpoints:**
+- `POST /api/integrations` - Create integration (encrypts apprise_url)
+- `GET /api/integrations` - List user's integrations
+- `GET /api/integrations/{id}` - Get integration by ID
+- `PATCH /api/integrations/{id}?is_active=true|false` - Activate/deactivate
+- `POST /api/integrations/{id}/test` - Send test notification
+- `DELETE /api/integrations/{id}` - Delete integration
+
+**Key Implementation:**
+- Encrypt `apprise_url` before storing using `encrypt_field()`
+- Never return `apprise_url` in responses (security)
+- Tag is automatically lowercased
+- Authorization checks (user can only access their own integrations)
+- Test endpoint uses `send_notification()` activity
 
 ### Testing
 
 ```bash
+# Run comprehensive Python test script
+uv run python scripts/test_phase_10.py
+
+# Or manual testing with curl:
 # Create integration
 curl -X POST http://localhost:8000/api/integrations \
   -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
   -d '{
     "name": "My Gotify",
     "apprise_url": "gotify://hostname/token",
@@ -2019,17 +2037,34 @@ curl http://localhost:8000/api/integrations \
 # Test integration
 curl -X POST http://localhost:8000/api/integrations/1/test \
   -H "Authorization: Bearer $TOKEN"
+
+# Deactivate
+curl -X PATCH http://localhost:8000/api/integrations/1?is_active=false \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Acceptance Criteria
 
-- ✅ Can create integration (URL encrypted)
+- ✅ Can create integration (URL encrypted with Fernet)
 - ✅ Can list user's integrations
-- ✅ Can test integration (sends test notification)
-- ✅ Can deactivate/activate integration
-- ✅ `apprise_url` never returned in responses
+- ✅ Can get integration by ID
+- ✅ Can test integration (sends test notification via Apprise)
+- ✅ Can activate/deactivate integration
+- ✅ Can delete integration
+- ✅ `apprise_url` never returned in responses (security check)
+- ✅ Authorization enforced (403 for other users' integrations)
+- ✅ Tag automatically lowercased
 
-**Files created**: `src/api/routes/integrations.py`
+**Files created**: 
+- `src/api/routes/integrations.py`
+- `scripts/test_phase_10.py` - Python test script (uses httpx + rich for better UX)
+
+**Files updated**:
+- `src/api/schemas.py` - Added IntegrationCreateRequest, IntegrationResponse
+- `src/api/main.py` - Registered integrations router
+- `pyproject.toml` - Added `rich` dependency for test output
+
+**Note**: Starting with Phase 10, test scripts are Python (not bash) for better maintainability, error handling, and cross-platform support.
 
 ---
 
