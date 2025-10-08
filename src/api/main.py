@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends
-from src.api.routes import health, auth, events, subscriptions
+from src.api.routes import health, auth, events, subscriptions, integrations
 from src.api.schemas import UserResponse
 from src.api.dependencies import get_current_user
 from src.db.models import User
@@ -21,6 +21,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(events.router)
 app.include_router(subscriptions.router)
+app.include_router(integrations.router)
 
 @app.get("/")
 async def root():

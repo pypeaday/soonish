@@ -99,3 +99,20 @@ class SubscriptionResponse(BaseModel):
     event_id: int
     user_id: int
     selectors: list[dict]
+
+
+class IntegrationCreateRequest(BaseModel):
+    name: str
+    apprise_url: str
+    tag: str
+
+
+class IntegrationResponse(BaseModel):
+    id: int
+    name: str
+    tag: str
+    is_active: bool
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True

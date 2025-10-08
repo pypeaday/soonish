@@ -5,6 +5,7 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from src.activities.events import validate_event_exists, get_event_details
     from src.activities.notifications import send_notification_to_subscribers
+    from src.activities.schedules import create_reminder_schedules, delete_reminder_schedules
 
 
 @workflow.defn
@@ -44,12 +45,24 @@ class EventWorkflow:
         if not details:
             return f"Could not load event {event_id} details"
         
-        # TODO Phase 9: Add reminder scheduling here
-        # For now, just log that notifications would be sent
-        workflow.logger.info(
-            f"Event {event_id} ready for notifications. "
-            f"Reminders will be added in Phase 9."
-        )
+        # Create reminder schedules if start_date is set
+        # TODO Phase 11: Pass subscription IDs to create per-subscriber custom reminders
+        # For now, creates system default reminders (T-1d, T-1h) for all subscribers
+        if details.get('start_date'):
+            try:
+                schedule_result = await workflow.execute_activity(
+                    create_reminder_schedules,
+                    args=[event_id, details['start_date']],
+                    start_to_close_timeout=timedelta(minutes=1),
+                    retry_policy=RetryPolicy(maximum_attempts=2)
+                )
+                workflow.logger.info(
+                    f"Created reminder schedules for event {event_id}: "
+                    f"{schedule_result.get('schedules_created', [])}"
+                )
+            except Exception as e:
+                workflow.logger.error(f"Failed to create reminder schedules: {e}")
+                # Non-critical - continue workflow
         
         # Parse event times (ensure timezone-aware for comparison with workflow.now())
         end_date = None
@@ -74,6 +87,17 @@ class EventWorkflow:
         except Exception:
             pass
         
+        # Cleanup: delete reminder schedules
+        try:
+            await workflow.execute_activity(
+                delete_reminder_schedules,
+                event_id,
+                start_to_close_timeout=timedelta(seconds=30)
+            )
+            workflow.logger.info(f"Deleted reminder schedules for event {event_id}")
+        except Exception as e:
+            workflow.logger.error(f"Failed to delete reminder schedules: {e}")
+        
         if self.is_cancelled:
             return f"Event {event_id} cancelled"
         
@@ -87,7 +111,32 @@ class EventWorkflow:
     @workflow.signal
     async def event_updated(self, updated_data: dict):
         """Signal that event was updated"""
+        old_start_date = self.event_data.get('start_date')
         self.event_data.update(updated_data)
+        new_start_date = updated_data.get('start_date')
+        
+        # If start_date changed, recreate reminder schedules
+        if new_start_date and new_start_date != old_start_date:
+            workflow.logger.info(
+                f"Event {self.event_id} start_date changed from {old_start_date} to {new_start_date}, "
+                f"recreating reminder schedules"
+            )
+            try:
+                # Delete old schedules
+                await workflow.execute_activity(
+                    delete_reminder_schedules,
+                    self.event_id,
+                    start_to_close_timeout=timedelta(seconds=30)
+                )
+                # Create new schedules
+                await workflow.execute_activity(
+                    create_reminder_schedules,
+                    args=[self.event_id, new_start_date],
+                    start_to_close_timeout=timedelta(minutes=1)
+                )
+                workflow.logger.info(f"Recreated reminder schedules for event {self.event_id}")
+            except Exception as e:
+                workflow.logger.error(f"Failed to recreate reminder schedules: {e}")
         
         # Send update notification to subscribers
         await workflow.execute_activity(
