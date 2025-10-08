@@ -10,6 +10,9 @@ console = Console()
 API_BASE = "http://localhost:8000"
 GOTIFY_URL = os.environ.get("GOTIFY_URL")
 GOTIFY_API_TOKEN = os.environ.get("GOTIFY_TOKEN")
+PHONE_NUMBER = os.environ.get("PHONE_NUMBER")
+GOOGLE_APP_USER = os.environ.get("GOOGLE_APP_USER")
+GOOGLE_APP_PASSWORD = os.environ.get("GOOGLE_APP_PASSWORD")
 
 async def check_server():
     """Check if API server is running"""
@@ -89,20 +92,59 @@ async def test_integrations_api():
         console.print(f"   Tag: {integration['tag']}")
         console.print(f"   Active: {integration['is_active']}")
         
-        # Test integration (send test notification)
-        console.print("\n📤 Testing integration (sending test notification)...")
+        # Test Gotify integration
+        console.print("\n📤 Testing Gotify integration (sending test notification)...")
         resp = await client.post(
             f"{API_BASE}/api/integrations/{integration_id}/test",
             headers=headers
         )
-        # May fail if Gotify server not reachable, but endpoint should work
         if resp.status_code == 200:
             result = resp.json()
-            console.print(f"✅ Test notification sent: {result.get('message')}", style="green")
+            console.print(f"✅ Gotify test notification sent: {result.get('message')}", style="green")
         else:
             error_detail = resp.json().get('detail', 'Unknown error') if resp.status_code != 404 else 'Not found'
-            console.print(f"⚠️  Test notification failed: {error_detail}", style="yellow")
-            console.print(f"   Status code: {resp.status_code}", style="yellow")
+            console.print(f"⚠️  Gotify test failed: {error_detail}", style="yellow")
+        
+        # Create SMS integration (via SMTP)
+        if PHONE_NUMBER and GOOGLE_APP_USER and GOOGLE_APP_PASSWORD:
+            console.print("\n📱 Creating SMS integration (via SMTP)...")
+            provider_domain = "vzwpix.com"  # Verizon
+            smtp_server = "smtp.gmail.com"
+            sms_apprise_url = f"mailtos://?to={PHONE_NUMBER}@{provider_domain}&smtp={smtp_server}&user={GOOGLE_APP_USER}&pass={GOOGLE_APP_PASSWORD}"
+            
+            resp = await client.post(
+                f"{API_BASE}/api/integrations",
+                headers=headers,
+                json={
+                    "name": "SMS via SMTP",
+                    "apprise_url": sms_apprise_url,
+                    "tag": "sms"
+                }
+            )
+            if resp.status_code == 201:
+                sms_integration = resp.json()
+                sms_integration_id = sms_integration["id"]
+                console.print(f"✅ Created SMS integration ID: {sms_integration_id}", style="green")
+                
+                # Test SMS integration
+                console.print("📤 Testing SMS integration...")
+                resp = await client.post(
+                    f"{API_BASE}/api/integrations/{sms_integration_id}/test",
+                    headers=headers
+                )
+                if resp.status_code == 200:
+                    console.print("✅ SMS test notification sent (check your phone!)", style="green")
+                else:
+                    error_detail = resp.json().get('detail', 'Unknown error')
+                    console.print(f"⚠️  SMS test failed: {error_detail}", style="yellow")
+                
+                # Clean up SMS integration
+                await client.delete(f"{API_BASE}/api/integrations/{sms_integration_id}", headers=headers)
+                console.print("✅ SMS integration cleaned up", style="green")
+            else:
+                console.print("⚠️  SMS integration creation failed", style="yellow")
+        else:
+            console.print("\n⏭️  Skipping SMS test (missing env vars: PHONE_NUMBER, GOOGLE_APP_USER, GOOGLE_APP_PASSWORD)", style="dim")
         
         # Deactivate integration
         console.print("\n🔕 Deactivating integration...")
