@@ -1,1 +1,0 @@
-Read @docs and @README.md  and then implement  a minimally working temporal project for the notification service. plan for feature expansion considering field encryption, improved security, etc.. Take a look at @setup_apprise_configs.py for a simple illustration of how to use apprise

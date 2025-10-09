@@ -23,7 +23,7 @@
 
 **Temporal Usage Strategy**:
 - One `EventWorkflow` per event (primary orchestration)
-- `ReminderWorkflow` triggered by Temporal Schedules for event-relative reminders
+- `ReminderWorkflow` triggered by Temporal Schedules for subscriber-specific reminders
 - `workflow.sleep` for ad-hoc "remind me in X hours" features
 - Activities manage all external I/O (database, Apprise)
 - Schedules created/managed in activities for idempotency
@@ -39,6 +39,42 @@
 - Continue-As-New after 100 notifications to avoid history bloat
 - Deterministic workflow code (all side effects in activities)
 
+### Two Notification Patterns
+
+**CRITICAL DISTINCTION**: Soonish has two fundamentally different notification patterns:
+
+#### 1. Event-Driven Notifications (Broadcast)
+- **Trigger**: Organizer action (event update, cancellation, manual announcement)
+- **Recipients**: ALL subscribers at once
+- **Timing**: Immediate (when event changes)
+- **Implementation**: Direct activity call from signal handler
+- **No Schedules**: These are real-time, not time-based
+- **Examples**:
+  - "Event location changed!" → Notify all subscribers NOW
+  - "Event cancelled" → Notify all subscribers NOW
+  - Organizer sends announcement → Notify all subscribers NOW
+
+#### 2. Subscriber-Driven Reminders (Personal)
+- **Trigger**: Time-based (subscriber's chosen reminder times)
+- **Recipients**: Individual subscriber
+- **Timing**: Scheduled (X minutes/hours before event)
+- **Implementation**: Temporal Schedules → ReminderWorkflow → Activity
+- **Per-Subscription Schedules**: Each subscription gets its own schedules
+- **Examples**:
+  - User A wants reminder 1 day before → Schedule fires, sends to User A only
+  - User B wants reminder 30 minutes before → Schedule fires, sends to User B only
+  - User C opts out → No schedules created
+
+**Schedule Naming Convention**:
+```
+Per-Subscription (Personal Reminders):
+  event-{event_id}-sub-{subscription_id}-reminder-{offset_seconds}s
+
+Examples:
+  event-123-sub-456-reminder-86400s  (User's 1-day reminder)
+  event-123-sub-789-reminder-3600s   (Different user's 1-hour reminder)
+```
+
 ---
 
 ## Workflows
@@ -48,10 +84,23 @@
 Primary workflow managing complete event lifecycle.
 
 #### Purpose
-- Orchestrate all notifications for an event
+- Orchestrate event lifecycle
+- Handle event-driven notifications (broadcast to all subscribers)
+- Manage per-subscription reminder schedules
 - Listen for real-time updates via signals
-- Manage reminder schedules
 - Run until event completion or cancellation
+
+#### Responsibilities
+
+**Event-Driven (Immediate Broadcast)**:
+- Event updates → Notify ALL subscribers immediately
+- Event cancellation → Notify ALL subscribers immediately
+- Manual announcements → Notify ALL/selected subscribers immediately
+
+**Subscriber-Driven (Scheduled Reminders)**:
+- Create schedules when event is created (for existing subscriptions)
+- Create schedules when new subscriber joins (incremental)
+- Delete schedules when event completes/cancels (cleanup)
 
 #### Signature
 
@@ -184,17 +233,24 @@ class EventWorkflow:
     # Signals defined below
     @workflow.signal
     async def participant_added(self, subscription_data: dict):
-        """Signal: New participant subscribed to event"""
+        """Signal: New participant subscribed to event
+        
+        Creates per-subscription reminder schedules incrementally.
+        Does NOT send welcome notification (that's handled by API).
+        """
         workflow.logger.info(
             f"Participant added to event {self.event_id}: {subscription_data}"
         )
         
-        await self._send_notification(
-            title=f"Welcome to {self.event_data['name']}",
-            body="You've successfully subscribed. You'll receive reminders before the event.",
-            subscription_ids=[subscription_data['subscription_id']],
-            notification_level="info"
-        )
+        subscription_id = subscription_data['subscription_id']
+        
+        # Create reminder schedules for this subscription only
+        if self.event_data.get('start_date'):
+            await workflow.execute_activity(
+                create_reminder_schedules_for_subscription,
+                args=[self.event_id, subscription_id, self.event_data['start_date']],
+                start_to_close_timeout=timedelta(minutes=1)
+            )
     
     @workflow.signal
     async def participant_removed(self, subscription_data: dict):
@@ -206,7 +262,11 @@ class EventWorkflow:
     
     @workflow.signal
     async def event_updated(self, updated_data: dict):
-        """Signal: Event details changed"""
+        """Signal: Event details changed
+        
+        EVENT-DRIVEN NOTIFICATION: Broadcasts to ALL subscribers immediately.
+        This is NOT a scheduled reminder - it's a real-time update.
+        """
         workflow.logger.info(
             f"Event {self.event_id} updated: {updated_data}"
         )
@@ -214,25 +274,25 @@ class EventWorkflow:
         # Update internal state
         self.event_data.update(updated_data)
         
-        # If start_date changed, reschedule reminders
+        # If start_date changed, reschedule ALL reminders
         if 'start_date' in updated_data:
             workflow.logger.info("Start date changed, rescheduling reminders")
             
-            # Delete old schedules
+            # Delete old schedules (all subscriptions)
             await workflow.execute_activity(
                 delete_reminder_schedules,
                 self.event_id,
                 start_to_close_timeout=timedelta(seconds=60)
             )
             
-            # Create new schedules
+            # Recreate schedules for ALL subscriptions
             await workflow.execute_activity(
                 create_reminder_schedules,
                 args=[self.event_id, updated_data['start_date']],
                 start_to_close_timeout=timedelta(seconds=60)
             )
         
-        # Notify all subscribers of the update
+        # EVENT-DRIVEN: Notify ALL subscribers immediately (broadcast)
         await self._send_notification(
             title=f"Event Update: {self.event_data['name']}",
             body=self._format_update_message(updated_data),
@@ -291,12 +351,13 @@ class EventWorkflow:
 
 ### ReminderWorkflow
 
-Short-lived workflow triggered by Temporal Schedules to send event reminders.
+Short-lived workflow triggered by Temporal Schedules to send subscriber-specific reminders.
 
 #### Purpose
-- Execute scheduled reminder notifications
-- Fire at specific times before events (T-1d, T-1h)
-- Triggered by Temporal Schedules, not by EventWorkflow directly
+- Execute SUBSCRIBER-DRIVEN scheduled reminder notifications
+- Fire at subscriber's chosen times before events (custom offsets)
+- Triggered by per-subscription Temporal Schedules
+- Send to INDIVIDUAL subscriber only (not broadcast)
 
 #### Signature
 
@@ -304,13 +365,14 @@ Short-lived workflow triggered by Temporal Schedules to send event reminders.
 @workflow.defn
 class ReminderWorkflow:
     @workflow.run
-    async def run(self, event_id: int, reminder_type: str) -> str:
+    async def run(self, event_id: int, subscription_id: int, offset_seconds: int) -> str:
         """
-        Send a scheduled reminder for an event.
+        Send a scheduled reminder to a SINGLE subscriber.
         
         Args:
             event_id: Database ID of the event
-            reminder_type: Type of reminder ("1day" or "1hour")
+            subscription_id: Specific subscription to notify
+            offset_seconds: How many seconds before event this reminder is for
         
         Returns:
             Success status
@@ -830,35 +892,82 @@ async def get_event_details(event_id: int) -> dict | None:
         }
 ```
 
+### ⚠️ Critical: Database Session Handling in Activities
+
+**IMPORTANT**: All Temporal activities MUST use `get_session()` context manager, NOT `get_db_session()` generator.
+
+**❌ WRONG - Causes greenlet errors**:
+```python
+from src.db.session import get_db_session
+
+async for session in get_db_session():  # ❌ DON'T DO THIS
+    repo = SomeRepository(session)
+    data = await repo.get_by_id(id)
+```
+
+**✅ CORRECT - Works in Temporal activities**:
+```python
+from src.db.session import get_session
+
+async with get_session() as session:  # ✅ USE THIS
+    repo = SomeRepository(session)
+    data = await repo.get_by_id(id)
+```
+
+**Why**: `get_db_session()` is designed for FastAPI dependency injection. Temporal's execution context doesn't support the async generator pattern, resulting in:
+```
+greenlet_spawn has not been called; can't call await_only() here
+```
+
+**Additional Requirement**: Repositories must eagerly load relationships to prevent lazy loading outside session context:
+```python
+# In repositories
+result = await self.session.execute(
+    select(Model)
+    .where(Model.id == id)
+    .options(selectinload(Model.relationship))  # ✅ Eager load
+)
+```
+
+**See Also**: [`docs/implementation/phase-plan.md`](../implementation/phase-plan.md#67-critical-database-session-handling-in-activities) for complete documentation.
+
 ---
 
 ## Temporal Schedules
 
 ### Overview
 
-Temporal Schedules are used for event-relative reminders (T-1d, T-1h before start).
+Temporal Schedules are used for **SUBSCRIBER-DRIVEN** personal reminders.
+
+**Key Principle**: Each subscription gets its own schedules based on the subscriber's chosen reminder times.
 
 ### Naming Convention
 
 ```
-event-{event_id}-reminder-{type}
+Per-Subscription Format:
+  event-{event_id}-sub-{subscription_id}-reminder-{offset_seconds}s
 
 Examples:
-- event-123-reminder-1day
-- event-123-reminder-1hour
+  event-123-sub-456-reminder-86400s   (User A's 1-day reminder)
+  event-123-sub-456-reminder-3600s    (User A's 1-hour reminder)
+  event-123-sub-789-reminder-1800s    (User B's 30-min reminder)
+  event-123-sub-999-reminder-300s     (User C's 5-min reminder)
 ```
 
 ### Lifecycle
 
-1. **Creation**: In `create_reminder_schedules` activity when event is created
-2. **Rescheduling**: Delete old + create new when start_date changes
-3. **Deletion**: In EventWorkflow cleanup (finally block) when event completes/cancels
+1. **Initial Creation**: When event is created, create schedules for ALL existing subscriptions
+2. **Incremental Creation**: When new subscriber joins, create schedules for THAT subscription only
+3. **Rescheduling**: If event start_date changes, delete ALL schedules and recreate for ALL subscriptions
+4. **Deletion**: When event completes/cancels, delete ALL schedules for that event
+5. **Unsubscribe**: When user unsubscribes, delete schedules for THAT subscription only
 
 ### Idempotency
 
-- Schedule IDs are deterministic (based on event_id)
-- Creation handles "already exists" errors gracefully
-- Deletion handles "not found" errors gracefully
+- Schedule IDs are deterministic (based on event_id + subscription_id + offset)
+- Creation handles "already exists" errors gracefully (treat as success)
+- Deletion handles "not found" errors gracefully (already deleted)
+- Multiple signals can safely try to create same schedule
 
 ---
 
@@ -866,13 +975,13 @@ Examples:
 
 EventWorkflow accepts the following signals:
 
-| Signal | Purpose | Arguments | Response |
-|--------|---------|-----------|----------|
-| `participant_added` | New subscription | `{subscription_id, user_id}` | Sends welcome notification |
-| `participant_removed` | Unsubscribe | `{subscription_id, email}` | Updates internal state |
-| `event_updated` | Event details changed | `{name?, start_date?, location?, ...}` | Notifies all subscribers, reschedules if needed |
-| `send_manual_notification` | Custom organizer message | `{title, body, subscription_ids?, notification_level?}` | Sends notification |
-| `cancel_event` | Event cancelled | None | Sends cancellation notice, ends workflow |
+| Signal | Purpose | Arguments | Response | Notification Type |
+|--------|---------|-----------|----------|-------------------|
+| `participant_added` | New subscription | `{subscription_id, user_id}` | Creates per-subscription reminder schedules | SUBSCRIBER-DRIVEN (schedules) |
+| `participant_removed` | Unsubscribe | `{subscription_id}` | Deletes schedules for that subscription | N/A |
+| `event_updated` | Event details changed | `{name?, start_date?, location?, ...}` | **EVENT-DRIVEN**: Broadcasts to ALL subscribers immediately, reschedules if needed | EVENT-DRIVEN (broadcast) |
+| `send_manual_notification` | Custom organizer message | `{title, body, subscription_ids?, notification_level?}` | **EVENT-DRIVEN**: Sends to ALL/selected subscribers | EVENT-DRIVEN (broadcast) |
+| `cancel_event` | Event cancelled | None | **EVENT-DRIVEN**: Broadcasts cancellation to ALL, ends workflow | EVENT-DRIVEN (broadcast) |
 
 ---
 
@@ -953,11 +1062,31 @@ pytest tests/integration/test_workflows_integration.py
 
 This specification provides:
 - ✅ Complete EventWorkflow with signal handling
-- ✅ ReminderWorkflow triggered by Temporal Schedules
+- ✅ ReminderWorkflow triggered by per-subscription Temporal Schedules
 - ✅ Schedule management in activities (idempotent)
 - ✅ Notification activities with selector-based routing
 - ✅ Error handling and retry policies
 - ✅ Continue-As-New to prevent history bloat
 - ✅ Testing strategies
+
+### Critical Architectural Distinction
+
+**Two Fundamentally Different Notification Patterns:**
+
+#### 1. Event-Driven Notifications (Broadcast)
+- **When**: Organizer takes action (update, cancel, announce)
+- **Who**: ALL subscribers at once
+- **How**: Direct activity call from signal handler
+- **Timing**: Immediate (real-time)
+- **Examples**: Event updated, event cancelled, manual announcement
+
+#### 2. Subscriber-Driven Reminders (Personal)
+- **When**: Time-based (subscriber's chosen times)
+- **Who**: Individual subscriber
+- **How**: Temporal Schedule → ReminderWorkflow → Activity
+- **Timing**: Scheduled (X seconds before event)
+- **Examples**: "Remind me 1 day before", "Remind me 30 minutes before"
+
+**DO NOT MIX THESE**: Event updates are NOT schedules. Personal reminders are NOT broadcasts.
 
 **Next Steps**: Implement api-specification.md to define HTTP endpoints and request/response contracts.

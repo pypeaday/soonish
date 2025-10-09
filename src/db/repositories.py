@@ -117,7 +117,13 @@ class SubscriptionRepository:
         self.session = session
     
     async def get_by_id(self, subscription_id: int) -> Optional[Subscription]:
-        return await self.session.get(Subscription, subscription_id)
+        """Get subscription by ID with selectors eagerly loaded"""
+        result = await self.session.execute(
+            select(Subscription)
+            .where(Subscription.id == subscription_id)
+            .options(selectinload(Subscription.selectors))
+        )
+        return result.scalar_one_or_none()
     
     async def get_by_event(self, event_id: int) -> List[Subscription]:
         """Get all subscriptions for an event with selectors and user loaded"""

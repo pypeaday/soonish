@@ -129,6 +129,10 @@ class Subscription(Base, TimestampMixin):
         back_populates="subscription",
         cascade="all, delete-orphan"
     )
+    reminders: Mapped[List["SubscriptionReminder"]] = relationship(
+        back_populates="subscription",
+        cascade="all, delete-orphan"
+    )
     
     def __repr__(self):
         return f"<Subscription(id={self.id}, event_id={self.event_id}, user_id={self.user_id})>"
@@ -212,3 +216,24 @@ class UnsubscribeToken(Base):
     def mark_used(self):
         """Mark token as used"""
         self.used_at = datetime.now(timezone.utc)
+
+
+class SubscriptionReminder(Base):
+    __tablename__ = "subscription_reminders"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subscription_id: Mapped[int] = mapped_column(
+        ForeignKey("subscriptions.id"), index=True, nullable=False
+    )
+    offset_seconds: Mapped[int] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    
+    # Relationship
+    subscription: Mapped["Subscription"] = relationship(back_populates="reminders")
+    
+    def __repr__(self):
+        return f"<SubscriptionReminder(id={self.id}, subscription_id={self.subscription_id}, offset_seconds={self.offset_seconds})>"

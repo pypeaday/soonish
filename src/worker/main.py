@@ -5,9 +5,8 @@ from src.config import get_settings
 from src.workflows.event import EventWorkflow
 from src.workflows.reminder import ReminderWorkflow
 from src.activities.events import validate_event_exists, get_event_details
-from src.activities.notifications import send_notification, send_notification_to_subscribers
-from src.activities.reminders import send_reminder_notification
-from src.activities.schedules import create_reminder_schedules, delete_reminder_schedules
+from src.activities.notifications import send_notification, send_notification_to_subscribers, send_notification_to_subscription
+from src.activities.schedules import create_reminder_schedules, delete_reminder_schedules, get_subscription_reminders
 
 
 async def main():
@@ -26,9 +25,10 @@ async def main():
             get_event_details,
             send_notification,
             send_notification_to_subscribers,
-            send_reminder_notification,
+            send_notification_to_subscription,
             create_reminder_schedules,
-            delete_reminder_schedules
+            delete_reminder_schedules,
+            get_subscription_reminders
         ]
     )
     

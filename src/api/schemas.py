@@ -92,6 +92,9 @@ class SubscribeRequest(BaseModel):
     # For authenticated
     integration_ids: list[int] | None = None
     tags: list[str] | None = None
+    
+    # Reminder preferences (Phase 11)
+    reminder_offsets: list[int] | None = None  # Seconds before event, e.g., [86400, 3600] = 1d, 1h
 
 
 class SubscriptionResponse(BaseModel):

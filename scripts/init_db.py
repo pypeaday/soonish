@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.db.base import Base
-from src.db.models import User, Event, Integration, Subscription, SubscriptionSelector
+from src.db.models import User, Event, Integration, Subscription, SubscriptionSelector, SubscriptionReminder
 
 # Database path
 DB_PATH = Path(__file__).parent.parent / "soonish.db"

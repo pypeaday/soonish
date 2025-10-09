@@ -351,11 +351,13 @@ from temporalio.client import Client
 from src.db.session import get_db_session
 from src.config import get_settings
 
-# Database dependency
-async def get_session() -> AsyncSession:
-    """Get database session"""
+# Database dependency (for FastAPI routes)
+async def get_db() -> AsyncSession:
+    """Get database session for FastAPI dependency injection"""
     async for session in get_db_session():
         yield session
+
+# Note: Temporal activities use get_session() directly, not this dependency
 
 # Temporal client (create once, reuse)
 _temporal_client: Client | None = None
@@ -850,14 +852,14 @@ uv add temporalio
 
 ```python
 from temporalio import activity
-from src.db.session import get_db_session
+from src.db.session import get_session
 from src.db.repositories import EventRepository
 
 
 @activity.defn
 async def validate_event_exists(event_id: int) -> bool:
     """Validate event exists in database"""
-    async for session in get_db_session():
+    async with get_session() as session:
         repo = EventRepository(session)
         event = await repo.get_by_id(event_id)
         return event is not None
@@ -866,7 +868,7 @@ async def validate_event_exists(event_id: int) -> bool:
 @activity.defn
 async def get_event_details(event_id: int) -> dict | None:
     """Get current event details"""
-    async for session in get_db_session():
+    async with get_session() as session:
         repo = EventRepository(session)
         event = await repo.get_by_id(event_id)
         if not event:
@@ -881,6 +883,8 @@ async def get_event_details(event_id: int) -> dict | None:
             "timezone": event.timezone
         }
 ```
+
+**CRITICAL**: Activities MUST use `async with get_session()` not `async for get_db_session()`. The latter causes greenlet errors in Temporal's execution context.
 
 #### 6.3 EventWorkflow (`src/workflows/event.py`)
 
@@ -1047,6 +1051,47 @@ open http://localhost:8233
 **Files created**: `src/workflows/event.py`, `src/activities/events.py`, `src/worker/main.py`
 
 **Files updated**: `src/api/routes/events.py`
+
+#### 6.7 Critical: Database Session Handling in Activities
+
+**Problem**: Using `async for session in get_db_session():` in Temporal activities causes greenlet errors:
+```
+greenlet_spawn has not been called; can't call await_only() here
+```
+
+**Root Cause**: `get_db_session()` is designed for FastAPI dependency injection, not Temporal activities. Temporal's execution context doesn't support the async generator pattern used by `get_db_session()`.
+
+**Solution**: Activities MUST use `get_session()` context manager:
+
+```python
+# ❌ WRONG - Causes greenlet errors
+async for session in get_db_session():
+    repo = SomeRepository(session)
+    data = await repo.get_by_id(id)
+
+# ✅ CORRECT - Works in Temporal activities  
+from src.db.session import get_session
+
+async with get_session() as session:
+    repo = SomeRepository(session)
+    data = await repo.get_by_id(id)
+```
+
+**Additional Fix**: Ensure repositories eagerly load relationships to prevent lazy loading outside session context:
+
+```python
+# In SubscriptionRepository.get_by_id()
+async def get_by_id(self, subscription_id: int) -> Optional[Subscription]:
+    """Get subscription by ID with selectors eagerly loaded"""
+    result = await self.session.execute(
+        select(Subscription)
+        .where(Subscription.id == subscription_id)
+        .options(selectinload(Subscription.selectors))  # ✅ Eager load
+    )
+    return result.scalar_one_or_none()
+```
+
+**Impact**: All activities that access the database must follow this pattern. This is critical for the notification system to work.
 
 ---
 
@@ -1244,7 +1289,7 @@ Helper to construct Apprise instances from database integrations:
 
 ```python
 import apprise
-from src.db.session import get_db_session
+from src.db.session import get_session
 from src.db.repositories import IntegrationRepository, SubscriptionRepository
 from src.config import get_settings
 
@@ -1255,7 +1300,7 @@ class NotificationBuilder:
     @staticmethod
     async def build_for_user(user_id: int, tags: list[str] | None = None) -> apprise.Apprise:
         """Build Apprise instance for a single user's integrations"""
-        async for session in get_db_session():
+        async with get_session() as session:
             repo = IntegrationRepository(session)
             integrations = await repo.list_by_user(user_id)
             
@@ -1282,7 +1327,7 @@ class NotificationBuilder:
         
         Returns: {user_id: apprise_instance}
         """
-        async for session in get_db_session():
+        async with get_session() as session:
             sub_repo = SubscriptionRepository(session)
             int_repo = IntegrationRepository(session)
             
@@ -1395,7 +1440,8 @@ async def send_notification(
         # Check if user has any integrations
         if len(apobj) == 0:
             # Fallback to email
-            async for session in get_db_session():
+            from src.db.session import get_session
+            async with get_session() as session:
                 user_repo = UserRepository(session)
                 user = await user_repo.get_by_id(user_id)
                 if user:
@@ -1482,7 +1528,8 @@ async def send_notification_to_subscribers(
                         })
                 else:
                     # No integrations, try fallback email
-                    async for session in get_db_session():
+                    from src.db.session import get_session
+                    async with get_session() as session:
                         user_repo = UserRepository(session)
                         user = await user_repo.get_by_id(user_id)
                         if user:
@@ -1594,7 +1641,7 @@ async def event_updated(self, updated_data: dict) -> None:
 ```python
 """Test notification system with real integrations"""
 import asyncio
-from src.db.session import get_db_session
+from src.db.session import get_session
 from src.db.repositories import UserRepository, IntegrationRepository, EventRepository
 from src.activities.notification_builder import NotificationBuilder
 from src.activities.notifications import send_notification, send_notification_to_subscribers
@@ -1606,7 +1653,7 @@ async def test_notification_builder():
     """Test building Apprise instances from database"""
     print("Testing NotificationBuilder...")
     
-    async for session in get_db_session():
+    async with get_session() as session:
         # Get test user
         user_repo = UserRepository(session)
         user = await user_repo.get_by_email("test@example.com")
@@ -1630,7 +1677,7 @@ async def test_send_notification():
     """Test sending notification to a user"""
     print("\nTesting send_notification activity...")
     
-    async for session in get_db_session():
+    async with get_session() as session:
         user_repo = UserRepository(session)
         user = await user_repo.get_by_email("test@example.com")
         
@@ -1659,7 +1706,7 @@ async def test_send_to_subscribers():
     """Test sending notification to event subscribers"""
     print("\nTesting send_notification_to_subscribers activity...")
     
-    async for session in get_db_session():
+    async with get_session() as session:
         event_repo = EventRepository(session)
         events = await event_repo.list_public_events(limit=1)
         

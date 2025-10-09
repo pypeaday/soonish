@@ -4,7 +4,7 @@ from temporalio.client import Client
 
 from src.api.schemas import SubscribeRequest
 from src.api.dependencies import get_session, get_temporal_client, get_current_user_optional
-from src.db.models import User, Integration, Subscription, SubscriptionSelector, UnsubscribeToken
+from src.db.models import User, Integration, Subscription, SubscriptionSelector, UnsubscribeToken, SubscriptionReminder
 from src.db.repositories import EventRepository, UserRepository, SubscriptionRepository
 
 router = APIRouter(prefix="/api/events", tags=["subscriptions"])
@@ -95,16 +95,16 @@ async def subscribe_to_event(
         session.add(selector)
         selectors_data.append({"integration_id": None, "tag": "email"})
     
-    # Signal workflow
-    try:
-        workflow_handle = temporal_client.get_workflow_handle(event.temporal_workflow_id)
-        await workflow_handle.signal("participant_added", {
-            "subscription_id": subscription.id,
-            "user_id": user.id
-        })
-    except Exception:
-        session.rollback()
-        pass  # Non-critical if signal fails
+    # Create reminder preferences (Phase 11)
+    if request.reminder_offsets is not None:
+        # User specified custom reminders
+        for offset_seconds in request.reminder_offsets:
+            reminder = SubscriptionReminder(
+                subscription_id=subscription.id,
+                offset_seconds=offset_seconds
+            )
+            session.add(reminder)
+    # If reminder_offsets is None, use system defaults (handled in schedule creation)
     
     await session.commit()
 
@@ -112,6 +112,16 @@ async def subscribe_to_event(
     token = UnsubscribeToken.generate(subscription.id)
     session.add(token)
     await session.commit()
+    
+    # Signal workflow AFTER commit so reminders are in database
+    try:
+        workflow_handle = temporal_client.get_workflow_handle(event.temporal_workflow_id)
+        await workflow_handle.signal("participant_added", {
+            "subscription_id": subscription.id,
+            "user_id": user.id
+        })
+    except Exception:
+        pass  # Non-critical if signal fails
     
     return {
         "success": True,

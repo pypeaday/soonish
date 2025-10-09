@@ -1,7 +1,7 @@
 # System Overview
 
 **Status**: Authoritative  
-**Last Updated**: 2025-10-03  
+**Last Updated**: 2025-10-09  
 **Purpose**: High-level architecture, design decisions, and system components for Soonish.
 
 ---
@@ -254,6 +254,39 @@ graph TB
 **Alternatives Considered**:
 - ❌ workflow.sleep in EventWorkflow: Bloats workflow history
 - ❌ Cron jobs: Not event-relative, requires external scheduler
+
+---
+
+### 8. Two Notification Patterns
+
+**Decision**: Distinct implementation patterns for event-driven broadcasts vs subscriber-driven reminders.
+
+**Event-Driven (Broadcast)**:
+- **Trigger**: Organizer action (update, cancel, announcement)
+- **Recipients**: ALL subscribers simultaneously
+- **Implementation**: Direct activity call from signal handler
+- **Timing**: Immediate
+- **Example**: Event location changed → Notify all NOW
+
+**Subscriber-Driven (Personal)**:
+- **Trigger**: Time-based (user's chosen reminder times)
+- **Recipients**: Individual subscriber
+- **Implementation**: Temporal Schedule → ReminderWorkflow → Activity
+- **Timing**: Scheduled (X seconds before event)
+- **Example**: User wants 1-hour reminder → Schedule fires, sends to that user only
+
+**Rationale**:
+- Clear separation of concerns prevents conflating broadcast and personal notifications
+- Per-subscription schedules enable individual reminder preferences
+- Event updates don't need schedules (they're immediate)
+- Personal reminders aren't broadcasts (they're individual)
+
+**Schedule Naming**:
+```
+event-{event_id}-sub-{subscription_id}-reminder-{offset_seconds}s
+```
+
+**See Also**: [`docs/architecture/notification-patterns.md`](./notification-patterns.md) for complete guide.
 
 ---
 

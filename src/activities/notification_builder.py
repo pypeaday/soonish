@@ -1,16 +1,14 @@
 import apprise
-from src.db.session import get_db_session
+from src.db.session import get_session
 from src.db.repositories import IntegrationRepository, SubscriptionRepository
 from src.config import get_settings
 
 
 class NotificationBuilder:
     """Build Apprise instances from user integrations"""
-    
-    @staticmethod
     async def build_for_user(user_id: int, tags: list[str] | None = None) -> apprise.Apprise:
         """Build Apprise instance for a single user's integrations"""
-        async for session in get_db_session():
+        async with get_session() as session:
             repo = IntegrationRepository(session)
             integrations = await repo.get_by_user(user_id)
             
@@ -29,15 +27,57 @@ class NotificationBuilder:
             return apobj
     
     @staticmethod
+    async def build_for_subscription(subscription, int_repo: IntegrationRepository) -> apprise.Apprise:
+        """Build Apprise instance for a SINGLE subscription (SUBSCRIBER-DRIVEN)
+        
+        Args:
+            subscription: Subscription model instance
+            int_repo: IntegrationRepository instance
+        
+        Returns:
+            Apprise instance with subscription's configured integrations
+        """
+        apobj = apprise.Apprise()
+        
+        # Get integration IDs from selectors
+        integration_ids = [
+            selector.integration_id 
+            for selector in subscription.selectors
+            if selector.integration_id is not None
+        ]
+        
+        # Get selector tags
+        sub_tags = [
+            selector.tag 
+            for selector in subscription.selectors
+            if selector.tag is not None
+        ]
+        
+        # Add integrations by ID
+        for int_id in integration_ids:
+            integration = await int_repo.get_by_id(int_id)
+            if integration and integration.is_active:
+                apobj.add(integration.apprise_url, tag=integration.tag)
+        
+        # Add integrations by tag
+        if sub_tags:
+            user_integrations = await int_repo.get_by_user(subscription.user_id)
+            for integration in user_integrations:
+                if integration.is_active and integration.tag in sub_tags:
+                    apobj.add(integration.apprise_url, tag=integration.tag)
+        
+        return apobj
+    
+    @staticmethod
     async def build_for_event_subscribers(
         event_id: int,
         selector_tags: list[str] | None = None
     ) -> dict[int, apprise.Apprise]:
-        """Build Apprise instances for all event subscribers
+        """Build Apprise instances for ALL event subscribers (EVENT-DRIVEN broadcast)
         
         Returns: {user_id: apprise_instance}
         """
-        async for session in get_db_session():
+        async with get_session() as session:
             sub_repo = SubscriptionRepository(session)
             int_repo = IntegrationRepository(session)
             

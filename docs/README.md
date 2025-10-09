@@ -9,12 +9,21 @@ Complete technical documentation for the Soonish event notification service.
 **New to the project?** Start here:
 
 1. 📖 Read [`vision.md`](./vision.md) - Understand what we're building
-2. 🏗️ Read [`architecture/system-overview.md`](./architecture/system-overview.md) - High-level design
-3. 🚀 Follow [`implementation/phase-plan.md`](./implementation/phase-plan.md) - Start building
+2. 📊 Read [`IMPLEMENTATION_STATUS.md`](./IMPLEMENTATION_STATUS.md) - **What's done, what works**
+3. 🏗️ Read [`architecture/system-overview.md`](./architecture/system-overview.md) - High-level design
+4. 🚀 Follow [`implementation/phase-plan.md`](./implementation/phase-plan.md) - Start building
 
 ---
 
 ## Documentation Structure
+
+### 📊 Status & Progress
+
+Current implementation status and recent changes.
+
+- **[IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md)** - ✅ Phases 0-10 complete, critical fixes, testing status
+- **[NOTIFICATION_REFACTOR_COMPLETE.md](./NOTIFICATION_REFACTOR_COMPLETE.md)** - Notification patterns refactor (2025-10-08)
+- **[ARCHITECTURAL_CLARITY.md](./ARCHITECTURAL_CLARITY.md)** - Architectural decisions and clarity improvements
 
 ### 📐 Specifications (Authoritative)
 
@@ -30,6 +39,7 @@ The source of truth for how things work.
 System design and decisions.
 
 - **[system-overview.md](./architecture/system-overview.md)** - Architecture diagrams, tech stack, design decisions, scaling strategy
+- **[notification-patterns.md](./architecture/notification-patterns.md)** - Event-driven vs subscriber-driven patterns (critical)
 
 ### 🛠️ Implementation
 

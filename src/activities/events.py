@@ -1,12 +1,12 @@
 from temporalio import activity
-from src.db.session import get_db_session
 from src.db.repositories import EventRepository
+from src.db.session import get_session
 
 
 @activity.defn
 async def validate_event_exists(event_id: int) -> bool:
     """Validate event exists in database"""
-    async for session in get_db_session():
+    async with get_session() as session:
         repo = EventRepository(session)
         event = await repo.get_by_id(event_id)
         return event is not None
@@ -15,7 +15,7 @@ async def validate_event_exists(event_id: int) -> bool:
 @activity.defn
 async def get_event_details(event_id: int) -> dict | None:
     """Get current event details"""
-    async for session in get_db_session():
+    async with get_session() as session:
         repo = EventRepository(session)
         event = await repo.get_by_id(event_id)
         if not event:
