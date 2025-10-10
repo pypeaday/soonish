@@ -103,14 +103,14 @@ CREATE TABLE integrations (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX ix_integrations_user_id ON integrations(user_id);
-CREATE INDEX ix_integrations_tag ON integrations(LOWER(tag));
-CREATE UNIQUE INDEX uq_integrations_user_url_tag ON integrations(user_id, apprise_url_encrypted, LOWER(tag));
+CREATE UNIQUE INDEX ix_integrations_user_name_tag ON integrations(user_id, name, LOWER(tag));
 ```
 
 **Notes**:
 - `apprise_url_encrypted` stores Fernet-encrypted bytes
 - `tag` is automatically lowercased on insert/update
-- Unique constraint prevents duplicate integrations per user
+- Unique constraint on `(user_id, name, tag)` allows same service with different tags
+- Example: User can have "Gotify Production" with both "urgent" and "info" tags
 
 ---
 
@@ -316,6 +316,9 @@ from sqlalchemy import event as sa_event
 
 class Integration(Base, TimestampMixin):
     __tablename__ = "integrations"
+    __table_args__ = (
+        Index('ix_integrations_user_name_tag', 'user_id', 'name', 'tag', unique=True),
+    )
     
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
@@ -641,6 +644,49 @@ class IntegrationRepository:
         self.session.add(integration)
         await self.session.flush()
         return integration
+    
+    async def get_or_create(
+        self, 
+        user_id: int, 
+        name: str, 
+        apprise_url: str, 
+        tag: str
+    ) -> tuple[Integration, bool]:
+        """Get existing integration or create new one.
+        
+        Unique key: (user_id, name, tag)
+        
+        Returns:
+            (integration, created) where created is True if new record
+        """
+        # Try to find existing by unique key
+        query = select(Integration).where(
+            and_(
+                Integration.user_id == user_id,
+                Integration.name == name,
+                Integration.tag == tag.lower()
+            )
+        )
+        result = await self.session.execute(query)
+        existing = result.scalar_one_or_none()
+        
+        if existing:
+            # Update URL if changed
+            if existing.apprise_url != apprise_url:
+                existing.apprise_url = apprise_url
+                await self.session.flush()
+            return existing, False
+        
+        # Create new
+        integration = Integration(
+            user_id=user_id,
+            name=name,
+            apprise_url=apprise_url,
+            tag=tag
+        )
+        self.session.add(integration)
+        await self.session.flush()
+        return integration, True
 
 class SubscriptionRepository:
     def __init__(self, session: AsyncSession):

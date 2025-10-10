@@ -72,6 +72,9 @@ class Event(Base, TimestampMixin):
 
 class Integration(Base, TimestampMixin):
     __tablename__ = "integrations"
+    __table_args__ = (
+        Index('ix_integrations_user_name_tag', 'user_id', 'name', 'tag', unique=True),
+    )
     
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)

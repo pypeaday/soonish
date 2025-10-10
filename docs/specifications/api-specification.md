@@ -753,16 +753,17 @@ async def create_integration(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session)
 ):
-    # Create integration (encryption happens automatically)
-    integration = Integration(
+    repo = IntegrationRepository(session)
+    
+    # Use get_or_create to prevent duplicates
+    # Unique key: (user_id, name, tag)
+    integration, created = await repo.get_or_create(
         user_id=current_user.id,
         name=request.name,
-        apprise_url=request.apprise_url,  # Property setter encrypts
-        tag=request.tag.lower(),
-        is_active=True
+        apprise_url=request.apprise_url,
+        tag=request.tag
     )
     
-    session.add(integration)
     await session.commit()
     
     return {

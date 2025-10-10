@@ -9,7 +9,7 @@ from src.db.repositories import (
     EventRepository, UserRepository,
     SubscriptionRepository, IntegrationRepository
 )
-from src.db.models import Event, Integration, Subscription, SubscriptionSelector
+from src.db.models import Event, Subscription, SubscriptionSelector
 from src.config import get_settings
 
 # Stub - fill in your Gotify details
@@ -67,14 +67,12 @@ async def main():
         sub_repo = SubscriptionRepository(session)
         
         for user, token in [(sub1, GOTIFY_TOKEN_USER1), (sub2, GOTIFY_TOKEN_USER2)]:
-            integration = Integration(
+            integration, created = await int_repo.get_or_create(
                 user_id=user.id,
                 name=f"Gotify {user.email}",
                 apprise_url=f"gotify://{GOTIFY_URL}/{token}",
                 tag="urgent"
             )
-            integration = await int_repo.create(integration)
-            await session.flush()
             
             subscription = Subscription(
                 event_id=event.id,

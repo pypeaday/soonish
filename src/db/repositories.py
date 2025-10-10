@@ -110,6 +110,49 @@ class IntegrationRepository:
         self.session.add(integration)
         await self.session.flush()
         return integration
+    
+    async def get_or_create(
+        self, 
+        user_id: int, 
+        name: str, 
+        apprise_url: str, 
+        tag: str
+    ) -> tuple[Integration, bool]:
+        """Get existing integration or create new one.
+        
+        Unique key: (user_id, name, tag)
+        
+        Returns:
+            (integration, created) where created is True if new record
+        """
+        # Try to find existing by unique key
+        query = select(Integration).where(
+            and_(
+                Integration.user_id == user_id,
+                Integration.name == name,
+                Integration.tag == tag.lower()
+            )
+        )
+        result = await self.session.execute(query)
+        existing = result.scalar_one_or_none()
+        
+        if existing:
+            # Update URL if changed
+            if existing.apprise_url != apprise_url:
+                existing.apprise_url = apprise_url
+                await self.session.flush()
+            return existing, False
+        
+        # Create new
+        integration = Integration(
+            user_id=user_id,
+            name=name,
+            apprise_url=apprise_url,
+            tag=tag
+        )
+        self.session.add(integration)
+        await self.session.flush()
+        return integration, True
 
 
 class SubscriptionRepository:

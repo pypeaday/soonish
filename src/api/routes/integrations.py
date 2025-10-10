@@ -2,9 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.dependencies import get_current_user, get_session as get_db
 from src.api.schemas import IntegrationCreateRequest, IntegrationResponse
-from src.db.models import User, Integration
+from src.db.models import User
 from src.db.repositories import IntegrationRepository
-from src.db.encryption import encrypt_field
 from src.activities.notifications import send_notification
 
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
@@ -16,20 +15,21 @@ async def create_integration(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new notification integration"""
-    # Encrypt the apprise URL
-    encrypted_url = encrypt_field(request.apprise_url)
+    """Create a new notification integration (or update if exists)
     
-    # Create integration
-    integration = Integration(
+    Uses get_or_create to prevent duplicates based on (user_id, name, tag).
+    If integration exists, updates the apprise_url.
+    """
+    repo = IntegrationRepository(db)
+    
+    # Use get_or_create to prevent duplicates
+    integration, created = await repo.get_or_create(
         user_id=current_user.id,
         name=request.name,
-        apprise_url_encrypted=encrypted_url,
-        tag=request.tag.lower(),  # Normalize tag
-        is_active=True
+        apprise_url=request.apprise_url,
+        tag=request.tag
     )
     
-    db.add(integration)
     await db.commit()
     await db.refresh(integration)
     
