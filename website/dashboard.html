@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Soonish - Dashboard</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script src="https://unpkg.com/alpinejs@3.13.3" defer></script>
+</head>
+<body x-data="{ showCreate: false }">
+  <nav>
+    <h1>Soonish</h1>
+    <div>
+      <a href="/dashboard">Events</a>
+      <a href="/integrations">Integrations</a>
+      <a href="#" @click.prevent="logout()">Logout</a>
+    </div>
+  </nav>
+  
+  <div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+      <h2>My Events</h2>
+      <button @click="showCreate = !showCreate" x-text="showCreate ? 'Cancel' : 'Create Event'"></button>
+    </div>
+    
+    <div x-show="showCreate" class="card">
+      <h3>Create Event</h3>
+      <form hx-post="/api/events" hx-target="#events" hx-swap="afterbegin" @htmx:after-request="showCreate = false">
+        <label>Event Name</label>
+        <input type="text" name="name" required>
+        <label>Description</label>
+        <textarea name="description" rows="3"></textarea>
+        <label>Start Date & Time</label>
+        <input type="datetime-local" name="start_date" required>
+        <label>End Date & Time</label>
+        <input type="datetime-local" name="end_date">
+        <label>Location</label>
+        <input type="text" name="location">
+        <label><input type="checkbox" name="is_public" checked> Public Event</label>
+        <button type="submit" style="margin-top: 1rem;">Create Event</button>
+      </form>
+    </div>
+    
+    <div id="events" hx-get="/api/events" hx-trigger="load" hx-swap="innerHTML">
+      <p>Loading events...</p>
+    </div>
+  </div>
+  
+  <script>
+    function getAuthHeaders() {
+      return { 'Authorization': 'Bearer ' + localStorage.getItem('token') };
+    }
+    
+    function logout() {
+      localStorage.removeItem('token');
+      window.location.href = '/';
+    }
+    
+    document.body.addEventListener('htmx:configRequest', (e) => {
+      e.detail.headers = {...e.detail.headers, ...getAuthHeaders()};
+    });
+    
+    document.body.addEventListener('htmx:afterRequest', (e) => {
+      if (e.detail.xhr.status === 401) {
+        logout();
+      }
+    });
+    
+    htmx.config.responseHandling = [
+      {code: 200, swap: true},
+      {code: 201, swap: true},
+      {code: 401, swap: false}
+    ];
+  </script>
+</body>
+</html>

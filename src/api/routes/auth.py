@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response, HTTPException, Cookie
+from fastapi import APIRouter, Depends, Response, HTTPException, Cookie, Request as FastAPIRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from src.api.schemas import LoginRequest, RegisterRequest, UserResponse
@@ -14,10 +14,25 @@ router = APIRouter(prefix="/api/auth", tags=["authentication"])
 
 @router.post("/register", response_model=UserResponse, status_code=201)
 async def register(
-    request: RegisterRequest,
+    http_request: FastAPIRequest,
     session: AsyncSession = Depends(get_session)
 ):
     """Register new user or set password for existing unverified user"""
+    # Handle both form data and JSON
+    content_type = http_request.headers.get("content-type", "")
+    
+    if "application/json" in content_type:
+        data = await http_request.json()
+        request = RegisterRequest(**data)
+    else:
+        # Form data
+        form = await http_request.form()
+        request = RegisterRequest(
+            email=form.get("email"),
+            password=form.get("password"),
+            name=form.get("name")
+        )
+    
     repo = UserRepository(session)
     existing_user = await repo.get_by_email(request.email)
     
@@ -49,11 +64,25 @@ async def register(
 
 @router.post("/login")
 async def login(
-    request: LoginRequest,
+    http_request: FastAPIRequest,
     response: Response,
     session: AsyncSession = Depends(get_session)
 ):
     """Login with email and password (returns JWT and sets session cookie)"""
+    # Handle both form data and JSON
+    content_type = http_request.headers.get("content-type", "")
+    
+    if "application/json" in content_type:
+        data = await http_request.json()
+        request = LoginRequest(**data)
+    else:
+        # Form data
+        form = await http_request.form()
+        request = LoginRequest(
+            email=form.get("email"),
+            password=form.get("password")
+        )
+    
     repo = UserRepository(session)
     user = await repo.get_by_email(request.email)
     

@@ -1,0 +1,62 @@
+:root {
+  --bg: #0a0a0a;
+  --surface: #1a1a1a;
+  --accent: #3D9970;
+  --text: #f0f0f0;
+  --text-muted: #888;
+  --error: #e74c3c;
+  --success: #2ecc71;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+nav {
+  background: var(--surface);
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #333;
+}
+nav h1 { margin: 0; font-size: 1.5rem; color: var(--accent); }
+nav a { color: var(--text); text-decoration: none; margin-left: 1.5rem; }
+nav a:hover { color: var(--accent); }
+.container { max-width: 1200px; margin: 2rem auto; padding: 0 2rem; }
+.card {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #333;
+}
+input, textarea, select {
+  width: 100%;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  background: var(--bg);
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 1rem;
+}
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+}
+button:hover { opacity: 0.9; }
+button.secondary { background: #555; }
+.error { color: var(--error); margin: 0.5rem 0; }
+.success { color: var(--success); margin: 0.5rem 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; }
+label { display: block; margin-top: 1rem; font-weight: 500; }

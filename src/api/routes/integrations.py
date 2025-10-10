@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.dependencies import get_current_user, get_session as get_db
 from src.api.schemas import IntegrationCreateRequest, IntegrationResponse
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
 @router.post("", response_model=IntegrationResponse, status_code=201)
 async def create_integration(
-    request: IntegrationCreateRequest,
+    http_request: FastAPIRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -20,6 +20,21 @@ async def create_integration(
     Uses get_or_create to prevent duplicates based on (user_id, name, tag).
     If integration exists, updates the apprise_url.
     """
+    # Handle both form data and JSON
+    content_type = http_request.headers.get("content-type", "")
+    
+    if "application/json" in content_type:
+        data = await http_request.json()
+        request = IntegrationCreateRequest(**data)
+    else:
+        # Form data
+        form = await http_request.form()
+        request = IntegrationCreateRequest(
+            name=form.get("name"),
+            apprise_url=form.get("apprise_url"),
+            tag=form.get("tag")
+        )
+    
     repo = IntegrationRepository(db)
     
     # Use get_or_create to prevent duplicates

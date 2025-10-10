@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 from temporalio import workflow
 from temporalio.client import Client
@@ -8,6 +8,7 @@ from src.db.models import Event, User
 from src.db.repositories import EventRepository
 from src.workflows.event import EventWorkflow
 from src.config import get_settings
+from datetime import datetime, timezone as tz
 import uuid
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -15,12 +16,40 @@ router = APIRouter(prefix="/api/events", tags=["events"])
 
 @router.post("", response_model=EventResponse, status_code=201)
 async def create_event(
-    request: EventCreateRequest,
+    http_request: FastAPIRequest,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     temporal_client: Client = Depends(get_temporal_client)
 ):
     """Create a new event (authenticated users only)"""
+    # Handle both form data and JSON
+    content_type = http_request.headers.get("content-type", "")
+    
+    if "application/json" in content_type:
+        data = await http_request.json()
+        request = EventCreateRequest(**data)
+    else:
+        # Form data - convert datetime-local format to timezone-aware datetime
+        form = await http_request.form()
+        start_dt = datetime.fromisoformat(form.get("start_date"))
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=tz.utc)
+        
+        end_dt = None
+        if form.get("end_date"):
+            end_dt = datetime.fromisoformat(form.get("end_date"))
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=tz.utc)
+        
+        request = EventCreateRequest(
+            name=form.get("name"),
+            description=form.get("description"),
+            start_date=start_dt,
+            end_date=end_dt,
+            timezone=form.get("timezone", "UTC"),
+            location=form.get("location"),
+            is_public=form.get("is_public", "true").lower() == "true"
+        )
     settings = get_settings()
     
     # Generate workflow ID
