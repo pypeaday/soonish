@@ -119,3 +119,11 @@ class IntegrationResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr

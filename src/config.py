@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     secret_key: str = ""
     debug: bool = True
     
+    # JWT
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
+    
     # SMTP (Service-level - Notifiq sends FROM these addresses)
     # Used for: verification emails, system notifications, fallback email notifications
     smtp_host: str = ""
