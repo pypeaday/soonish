@@ -7,8 +7,8 @@ from src.api.dependencies import get_current_user
 from src.db.models import User
 import os
 
-# TODO Phase 15: Enable rate limiting
-# from src.api.middleware.rate_limit import rate_limit_middleware
+# Rate limiting enabled
+from src.api.middleware.rate_limit import rate_limit_middleware
 
 app = FastAPI(
     title="Soonish API",
@@ -16,8 +16,8 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# TODO Phase 15: Uncomment to enable rate limiting with IP logging
-# app.middleware("http")(rate_limit_middleware)
+# Enable rate limiting (60 requests/minute per IP)
+app.middleware("http")(rate_limit_middleware)
 
 # Mount static files
 website_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "website")

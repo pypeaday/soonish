@@ -1,6 +1,6 @@
 from fastapi import Request, HTTPException
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class RateLimiter:
         Raises HTTPException(429) if limit exceeded.
         """
         client_ip = self.get_client_ip(request)
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         minute_ago = now - timedelta(minutes=1)
         
         # Clean old requests (sliding window)
@@ -88,12 +88,21 @@ async def rate_limit_middleware(request: Request, call_next):
         from src.api.middleware.rate_limit import rate_limit_middleware
         app.middleware("http")(rate_limit_middleware)
     """
+    from fastapi.responses import JSONResponse
+    
     # Skip rate limiting for health checks
     if request.url.path == "/api/health":
         return await call_next(request)
     
-    # Check rate limit
-    await _rate_limiter.check_rate_limit(request)
+    # Check rate limit - catch HTTPException and convert to response
+    try:
+        await _rate_limiter.check_rate_limit(request)
+    except HTTPException as exc:
+        # Return proper JSON response for rate limit errors
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail}
+        )
     
     # Continue with request
     response = await call_next(request)

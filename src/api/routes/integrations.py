@@ -35,23 +35,54 @@ async def create_integration(
         "tag": "urgent"
     }
     """
+    # Map of supported integration types to their config models and converters
+    INTEGRATION_HANDLERS = {
+        "gotify": {
+            "config_class": "GotifyConfig",
+            "converter": "convert_gotify_to_apprise",
+        },
+        "email": {
+            "config_class": "EmailConfig",
+            "converter": "convert_email_to_apprise",
+        },
+        "ntfy": {
+            "config_class": "NtfyConfig",
+            "converter": "convert_ntfy_to_apprise",
+        },
+        "discord": {
+            "config_class": "DiscordConfig",
+            "converter": "convert_discord_to_apprise",
+        },
+        "slack": {
+            "config_class": "SlackConfig",
+            "converter": "convert_slack_to_apprise",
+        },
+    }
+    
     # Validate integration type
-    if request.integration_type != "gotify":
+    if request.integration_type not in INTEGRATION_HANDLERS:
+        supported = ", ".join(INTEGRATION_HANDLERS.keys())
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported integration type: {request.integration_type}. Currently only 'gotify' is supported."
+            detail=f"Unsupported integration type: {request.integration_type}. Supported types: {supported}"
         )
     
     # Convert config to Apprise URL
     try:
-        from src.api.integration_schemas.integration_configs import GotifyConfig
-        from src.api.services.integration_converters import convert_gotify_to_apprise
+        from src.api.integration_schemas import integration_configs
+        from src.api.services import integration_converters
         
-        # Validate config against Gotify schema
-        gotify_config = GotifyConfig(**request.config)
+        handler = INTEGRATION_HANDLERS[request.integration_type]
+        
+        # Get config class and converter dynamically
+        config_class = getattr(integration_configs, handler["config_class"])
+        converter_func = getattr(integration_converters, handler["converter"])
+        
+        # Validate config against schema
+        validated_config = config_class(**request.config)
         
         # Convert to Apprise URL
-        apprise_url = convert_gotify_to_apprise(gotify_config)
+        apprise_url = converter_func(validated_config)
         
     except Exception as e:
         raise HTTPException(
@@ -149,10 +180,17 @@ async def update_integration(
 @router.post("/{integration_id}/test")
 async def test_integration(
     integration_id: int,
+    title: str | None = None,
+    body: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Send a test notification to this integration"""
+    """Send a test notification to this integration
+    
+    Optional query params:
+    - title: Custom notification title (default: "Test Notification")
+    - body: Custom notification body (default: auto-generated)
+    """
     repo = IntegrationRepository(db)
     integration = await repo.get_by_id(integration_id)
     
@@ -163,12 +201,16 @@ async def test_integration(
     if integration.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
+    # Use custom or default messages
+    notification_title = title or "Test Notification"
+    notification_body = body or f"This is a test notification from your '{integration.name}' integration."
+    
     # Send test notification
     try:
         result = await send_notification(
             user_id=current_user.id,
-            title="Test Notification",
-            body=f"This is a test notification from your '{integration.name}' integration.",
+            title=notification_title,
+            body=notification_body,
             level="info",
             tags=[integration.tag]  # Filter by this integration's tag
         )
