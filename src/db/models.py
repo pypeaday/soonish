@@ -86,6 +86,10 @@ class Integration(Base, TimestampMixin):
     tag: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     
+    # Phase 15: Integration type and original config storage
+    integration_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # "gotify", "email", "ntfy", etc.
+    config_json_encrypted: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)  # Encrypted original config
+    
     # Relationships
     user: Mapped["User"] = relationship(back_populates="integrations")
     subscription_selectors: Mapped[List["SubscriptionSelector"]] = relationship(
@@ -106,8 +110,25 @@ class Integration(Base, TimestampMixin):
         from src.db.encryption import encrypt_field
         self.apprise_url_encrypted = encrypt_field(value)
     
+    @property
+    def config_json(self) -> Optional[str]:
+        """Decrypt and return the config JSON"""
+        if not self.config_json_encrypted:
+            return None
+        from src.db.encryption import decrypt_field
+        return decrypt_field(self.config_json_encrypted)
+    
+    @config_json.setter
+    def config_json(self, value: Optional[str]):
+        """Encrypt and store the config JSON"""
+        if value is None:
+            self.config_json_encrypted = None
+        else:
+            from src.db.encryption import encrypt_field
+            self.config_json_encrypted = encrypt_field(value)
+    
     def __repr__(self):
-        return f"<Integration(id={self.id}, name={self.name}, tag={self.tag}, active={self.is_active})>"
+        return f"<Integration(id={self.id}, name={self.name}, tag={self.tag}, type={self.integration_type}, active={self.is_active})>"
 
 
 # Automatically lowercase tags on insert/update

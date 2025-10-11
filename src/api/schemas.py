@@ -105,8 +105,14 @@ class SubscriptionResponse(BaseModel):
 
 
 class IntegrationCreateRequest(BaseModel):
+    """Typed integration creation
+    
+    Users provide integration_type and type-specific config.
+    Backend converts to Apprise URL automatically.
+    """
     name: str
-    apprise_url: str
+    integration_type: str  # "gotify", "email", "ntfy", etc.
+    config: dict  # Type-specific config (validated by converter)
     tag: str
 
 
@@ -115,6 +121,7 @@ class IntegrationResponse(BaseModel):
     name: str
     tag: str
     is_active: bool
+    integration_type: str | None = None
     created_at: datetime
     
     class Config:

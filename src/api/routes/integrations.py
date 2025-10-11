@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.dependencies import get_current_user, get_session as get_db
@@ -7,45 +7,73 @@ from src.api.templates import render_template
 from src.db.models import User
 from src.db.repositories import IntegrationRepository
 from src.activities.notifications import send_notification
+import json
 
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
 
 @router.post("", response_model=IntegrationResponse, status_code=201)
 async def create_integration(
-    http_request: FastAPIRequest,
+    request: IntegrationCreateRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new notification integration (or update if exists)
+    """Create integration with typed config
     
-    Uses get_or_create to prevent duplicates based on (user_id, name, tag).
-    If integration exists, updates the apprise_url.
+    Users provide integration_type and type-specific config.
+    Backend converts to Apprise URL and stores both.
+    
+    Example for Gotify:
+    {
+        "name": "My Gotify Server",
+        "integration_type": "gotify",
+        "config": {
+            "server_url": "https://gotify.example.com",
+            "token": "AbCdEf123456",
+            "priority": "normal"
+        },
+        "tag": "urgent"
+    }
     """
-    # Handle both form data and JSON
-    content_type = http_request.headers.get("content-type", "")
-    
-    if "application/json" in content_type:
-        data = await http_request.json()
-        request = IntegrationCreateRequest(**data)
-    else:
-        # Form data
-        form = await http_request.form()
-        request = IntegrationCreateRequest(
-            name=form.get("name"),
-            apprise_url=form.get("apprise_url"),
-            tag=form.get("tag")
+    # Validate integration type
+    if request.integration_type != "gotify":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported integration type: {request.integration_type}. Currently only 'gotify' is supported."
         )
     
-    repo = IntegrationRepository(db)
+    # Convert config to Apprise URL
+    try:
+        from src.api.integration_schemas.integration_configs import GotifyConfig
+        from src.api.services.integration_converters import convert_gotify_to_apprise
+        
+        # Validate config against Gotify schema
+        gotify_config = GotifyConfig(**request.config)
+        
+        # Convert to Apprise URL
+        apprise_url = convert_gotify_to_apprise(gotify_config)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {request.integration_type} configuration: {str(e)}"
+        )
     
-    # Use get_or_create to prevent duplicates
+    # Store original config as encrypted JSON
+    config_json = json.dumps(request.config)
+    
+    # Create integration
+    repo = IntegrationRepository(db)
     integration, created = await repo.get_or_create(
         user_id=current_user.id,
         name=request.name,
-        apprise_url=request.apprise_url,
+        apprise_url=apprise_url,
         tag=request.tag
     )
+    
+    # Set Phase 15 fields
+    integration.integration_type = request.integration_type
+    integration.config_json = config_json
     
     await db.commit()
     await db.refresh(integration)
