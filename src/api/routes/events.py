@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from temporalio import workflow
 from temporalio.client import Client
-from src.api.schemas import EventCreateRequest, EventUpdateRequest, EventResponse
-from src.api.dependencies import get_session, get_current_user, get_temporal_client
+from src.api.schemas import EventCreateRequest, EventUpdateRequest, EventResponse, InviteToEventRequest, InvitationResponse
+from src.api.dependencies import get_session, get_current_user, get_current_user_optional, get_temporal_client
 from src.db.models import Event, User
-from src.db.repositories import EventRepository
+from src.db.repositories import EventRepository, EventInvitationRepository
+from src.api.services.email import send_invitation_email
+from typing import Optional
 from src.workflows.event import EventWorkflow
 from src.config import get_settings
 from datetime import datetime, timezone as tz
@@ -104,13 +107,26 @@ async def create_event(
 @router.get("/{event_id}", response_model=EventResponse)
 async def get_event(
     event_id: int,
+    current_user: Optional[User] = Depends(get_current_user_optional),
     session: AsyncSession = Depends(get_session)
 ):
-    """Get event by ID (public events or organizer)"""
+    """Get event by ID (public events or authorized users)"""
     repo = EventRepository(session)
     event = await repo.get_by_id(event_id)
+    
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
+    
+    # Check authorization for private events
+    if not event.is_public:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        # Check if user is organizer or subscriber
+        is_authorized = await repo.can_view_event(event_id, current_user.id)
+        if not is_authorized:
+            raise HTTPException(status_code=403, detail="Not authorized to view this event")
+    
     return event
 
 
@@ -196,13 +212,150 @@ async def delete_event(
     return None
 
 
-@router.get("", response_model=list[EventResponse])
+@router.get("")
 async def list_events(
+    current_user: Optional[User] = Depends(get_current_user_optional),
     session: AsyncSession = Depends(get_session),
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    html: bool = False
 ):
-    """List all public events"""
+    """List events (public + user's private events). Set html=true for HTML response."""
     repo = EventRepository(session)
-    events = await repo.list_public_events(skip=skip, limit=limit)
-    return events
+    
+    if current_user:
+        # Get public events + user's private events
+        events = await repo.list_visible_for_user(
+            user_id=current_user.id,
+            skip=skip,
+            limit=limit
+        )
+    else:
+        # Get only public events
+        events = await repo.list_public_events(skip=skip, limit=limit)
+    
+    # Return HTML if requested
+    if html:
+        if not events:
+            return HTMLResponse('<div class="card"><p>No events yet. Create your first event!</p></div>')
+        
+        html_content = ""
+        for event in events:
+            is_organizer = current_user and event.organizer_user_id == current_user.id
+            html_content += f'''
+            <div class="card">
+                <h3>{event.name}</h3>
+                <p>{event.description or "No description"}</p>
+                <p><strong>Start:</strong> {event.start_date.strftime("%Y-%m-%d %H:%M")}</p>
+                {f'<p><strong>Location:</strong> {event.location}</p>' if event.location else ''}
+                <p><strong>Organizer:</strong> {"You" if is_organizer else "Other"}</p>
+            </div>
+            '''
+        return HTMLResponse(html_content)
+    
+    # Return JSON (validate with response_model)
+    return [EventResponse.model_validate(event) for event in events]
+
+
+@router.post("/{event_id}/invite")
+async def invite_to_event(
+    event_id: int,
+    request: InviteToEventRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """Invite user to private event (organizer only)"""
+    # Get event
+    event_repo = EventRepository(session)
+    event = await event_repo.get_by_id(event_id)
+    
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    # Check if user is organizer
+    if event.organizer_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only organizer can invite")
+    
+    # Create invitation
+    invitation_repo = EventInvitationRepository(session)
+    invitation = await invitation_repo.create_invitation(
+        event_id=event_id,
+        email=request.email,
+        invited_by_user_id=current_user.id
+    )
+    
+    await session.commit()
+    
+    # Send invitation email
+    await send_invitation_email(
+        email=request.email,
+        event_name=event.name,
+        organizer_name=current_user.name,
+        token=invitation.token
+    )
+    
+    return {
+        "success": True,
+        "message": f"Invitation sent to {request.email}",
+        "invitation_id": invitation.id
+    }
+
+
+@router.get("/{event_id}/invitations", response_model=list[InvitationResponse])
+async def list_invitations(
+    event_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """List invitations for event (organizer only)"""
+    # Check authorization
+    event_repo = EventRepository(session)
+    event = await event_repo.get_by_id(event_id)
+    
+    if not event or event.organizer_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Get invitations
+    invitation_repo = EventInvitationRepository(session)
+    invitations = await invitation_repo.get_by_event(event_id)
+    
+    # Add is_valid to response
+    return [
+        InvitationResponse(
+            id=inv.id,
+            event_id=inv.event_id,
+            email=inv.email,
+            invited_by_user_id=inv.invited_by_user_id,
+            expires_at=inv.expires_at,
+            used_at=inv.used_at,
+            is_valid=inv.is_valid(),
+            created_at=inv.created_at
+        )
+        for inv in invitations
+    ]
+
+
+@router.delete("/{event_id}/invitations/{invitation_id}", status_code=204)
+async def revoke_invitation(
+    event_id: int,
+    invitation_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """Revoke invitation (organizer only)"""
+    # Check authorization
+    event_repo = EventRepository(session)
+    event = await event_repo.get_by_id(event_id)
+    
+    if not event or event.organizer_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Delete invitation
+    invitation_repo = EventInvitationRepository(session)
+    invitation = await invitation_repo.get_by_id(invitation_id)
+    
+    if not invitation or invitation.event_id != event_id:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    
+    await session.delete(invitation)
+    await session.commit()

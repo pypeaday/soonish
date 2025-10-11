@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.db.base import Base
-from src.db.models import User, Event, Integration, Subscription, SubscriptionSelector
+from src.db.models import User, Event, Integration, Subscription, SubscriptionSelector, EventInvitation
 
 # Database path
 DB_PATH = Path(__file__).parent.parent / "soonish.db"
@@ -145,7 +145,7 @@ async def inspect_db(engine):
         from sqlalchemy import select, func
         
         # Count tables
-        for model in [User, Event, Integration, Subscription, SubscriptionSelector]:
+        for model in [User, Event, Integration, Subscription, SubscriptionSelector, EventInvitation]:
             result = await session.execute(select(func.count()).select_from(model))
             count = result.scalar()
             print(f"   - {model.__tablename__}: {count} rows")

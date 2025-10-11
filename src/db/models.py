@@ -65,6 +65,9 @@ class Event(Base, TimestampMixin):
         back_populates="event",
         cascade="all, delete-orphan"
     )
+    invitations: Mapped[List["EventInvitation"]] = relationship(
+        cascade="all, delete-orphan"
+    )
     
     def __repr__(self):
         return f"<Event(id={self.id}, name={self.name}, start={self.start_date})>"
@@ -240,3 +243,49 @@ class SubscriptionReminder(Base):
     
     def __repr__(self):
         return f"<SubscriptionReminder(id={self.id}, subscription_id={self.subscription_id}, offset_seconds={self.offset_seconds})>"
+
+
+class EventInvitation(Base, TimestampMixin):
+    __tablename__ = "event_invitations"
+    __table_args__ = (
+        Index('ix_event_invitations_token', 'token', unique=True),
+        Index('ix_event_invitations_event', 'event_id'),
+    )
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    invited_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    event: Mapped["Event"] = relationship(overlaps="invitations")
+    invited_by: Mapped["User"] = relationship()
+    
+    def is_valid(self) -> bool:
+        """Check if invitation is still valid"""
+        if self.used_at:
+            return False
+        
+        # Ensure both datetimes are timezone-aware for comparison
+        now = datetime.now(timezone.utc)
+        expires = self.expires_at
+        
+        # If expires_at is naive (from SQLite), make it UTC-aware
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        
+        if now > expires:
+            return False
+        return True
+    
+    def __repr__(self):
+        return f"<EventInvitation(id={self.id}, event_id={self.event_id}, email={self.email}, valid={self.is_valid()})>"

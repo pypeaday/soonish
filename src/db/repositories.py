@@ -3,7 +3,9 @@ from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
 
-from src.db.models import User, Event, Integration, Subscription
+from src.db.models import User, Event, Integration, Subscription, EventInvitation
+from datetime import datetime, timedelta, timezone
+import secrets
 
 
 class UserRepository:
@@ -74,6 +76,58 @@ class EventRepository:
         result = await self.session.execute(
             select(Event).where(Event.is_public).offset(skip).limit(limit)
         )
+        return list(result.scalars().all())
+    
+    async def can_view_event(self, event_id: int, user_id: int) -> bool:
+        """Check if user can view event (organizer or subscriber)"""
+        # Check if user is organizer
+        result = await self.session.execute(
+            select(Event).where(
+                Event.id == event_id,
+                Event.organizer_user_id == user_id
+            )
+        )
+        if result.scalar_one_or_none():
+            return True
+        
+        # Check if user is subscriber
+        result = await self.session.execute(
+            select(Subscription).where(
+                Subscription.event_id == event_id,
+                Subscription.user_id == user_id
+            )
+        )
+        return result.scalar_one_or_none() is not None
+    
+    async def list_visible_for_user(
+        self, user_id: int, skip: int = 0, limit: int = 100
+    ) -> List[Event]:
+        """List events visible to user (public + subscribed private)"""
+        # Get public events
+        public_query = select(Event.id).where(Event.is_public.is_(True))
+        
+        # Get private events user is subscribed to or organizes
+        private_query = (
+            select(Event.id)
+            .outerjoin(Subscription)
+            .where(
+                Event.is_public.is_(False),
+                and_(
+                    (Event.organizer_user_id == user_id) | 
+                    (Subscription.user_id == user_id)
+                )
+            )
+        )
+        
+        # Union to get unique event IDs, then fetch full objects
+        union_query = public_query.union(private_query).subquery()
+        query = (
+            select(Event)
+            .where(Event.id.in_(select(union_query)))
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await self.session.execute(query)
         return list(result.scalars().all())
 
 
@@ -201,3 +255,54 @@ class SubscriptionRepository:
     async def delete(self, subscription: Subscription):
         await self.session.delete(subscription)
         await self.session.flush()
+
+
+class EventInvitationRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+    
+    async def create_invitation(
+        self, event_id: int, email: str, invited_by_user_id: int
+    ) -> EventInvitation:
+        """Create invitation with token"""
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        
+        invitation = EventInvitation(
+            event_id=event_id,
+            email=email,
+            token=token,
+            invited_by_user_id=invited_by_user_id,
+            expires_at=expires_at
+        )
+        
+        self.session.add(invitation)
+        await self.session.flush()
+        return invitation
+    
+    async def get_by_id(self, invitation_id: int) -> Optional[EventInvitation]:
+        return await self.session.get(EventInvitation, invitation_id)
+    
+    async def get_by_token(self, token: str) -> Optional[EventInvitation]:
+        """Get invitation by token"""
+        result = await self.session.execute(
+            select(EventInvitation).where(EventInvitation.token == token)
+        )
+        return result.scalar_one_or_none()
+    
+    async def validate_token(self, token: str) -> Optional[EventInvitation]:
+        """Validate invitation token"""
+        invitation = await self.get_by_token(token)
+        
+        if invitation and invitation.is_valid():
+            return invitation
+        return None
+    
+    async def get_by_event(self, event_id: int) -> List[EventInvitation]:
+        """Get all invitations for event"""
+        result = await self.session.execute(
+            select(EventInvitation)
+            .where(EventInvitation.event_id == event_id)
+            .order_by(EventInvitation.created_at.desc())
+        )
+        return list(result.scalars().all())

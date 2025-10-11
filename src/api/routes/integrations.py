@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.dependencies import get_current_user, get_session as get_db
 from src.api.schemas import IntegrationCreateRequest, IntegrationResponse
@@ -51,15 +52,39 @@ async def create_integration(
     return integration
 
 
-@router.get("", response_model=list[IntegrationResponse])
+@router.get("")
 async def list_integrations(
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    html: bool = False
 ):
-    """List user's integrations"""
+    """List user's integrations. Set html=true for HTML response."""
     repo = IntegrationRepository(db)
     integrations = await repo.get_by_user(current_user.id)
-    return integrations
+    
+    # Return HTML if requested
+    if html:
+        if not integrations:
+            return HTMLResponse('<div class="card"><p>No integrations yet. Add your first notification channel!</p></div>')
+        
+        html_content = ""
+        for integration in integrations:
+            status = "✅ Active" if integration.is_active else "❌ Inactive"
+            html_content += f'''
+            <div class="card">
+                <h3>{integration.name}</h3>
+                <p><strong>Tag:</strong> {integration.tag}</p>
+                <p><strong>Status:</strong> {status}</p>
+                <button hx-post="/api/integrations/{integration.id}/test" 
+                        hx-target="this" 
+                        hx-swap="outerHTML"
+                        class="secondary">Test</button>
+            </div>
+            '''
+        return HTMLResponse(html_content)
+    
+    # Return JSON (validate with response_model)
+    return [IntegrationResponse.model_validate(integration) for integration in integrations]
 
 
 @router.get("/{integration_id}", response_model=IntegrationResponse)

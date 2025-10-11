@@ -127,3 +127,21 @@ class VerifyEmailRequest(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
+
+class InviteToEventRequest(BaseModel):
+    email: EmailStr
+
+
+class InvitationResponse(BaseModel):
+    id: int
+    event_id: int
+    email: str
+    invited_by_user_id: int
+    expires_at: datetime
+    used_at: datetime | None
+    is_valid: bool
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True

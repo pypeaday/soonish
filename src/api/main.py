@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from src.api.routes import health, auth, events, subscriptions, integrations, web
+from src.api.routes import health, auth, events, subscriptions, integrations
 from src.api.schemas import UserResponse
 from src.api.dependencies import get_current_user
 from src.db.models import User
@@ -26,7 +26,6 @@ app.mount("/static", StaticFiles(directory=website_dir), name="static")
 # Include routers
 app.include_router(health.router)
 app.include_router(auth.router)
-app.include_router(web.router)
 app.include_router(events.router)
 app.include_router(subscriptions.router)
 app.include_router(integrations.router)

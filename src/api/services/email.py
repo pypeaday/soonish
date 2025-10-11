@@ -110,3 +110,66 @@ Soonish Event Notifications
     )
     
     return result
+
+
+async def send_invitation_email(
+    email: str,
+    event_name: str,
+    organizer_name: str,
+    token: str,
+    base_url: str = "http://localhost:8000"
+) -> bool:
+    """Send event invitation email"""
+    settings = get_settings()
+    
+    # Build invitation URL with encoded token
+    encoded_token = quote(token, safe='')
+    invitation_url = f"{base_url}/events/invite?token={encoded_token}"
+    
+    body = f"""
+Hello!
+
+{organizer_name} has invited you to a private event:
+
+Event: {event_name}
+
+Click the link below to view details and subscribe:
+
+{invitation_url}
+
+This invitation will expire in 7 days.
+
+---
+Soonish Event Notifications
+"""
+    
+    # Create Apprise instance
+    apobj = apprise.Apprise()
+    
+    # Add SMTP service
+    if settings.proton_user and settings.proton_app_password:
+        apobj.add(
+            f'mailtos://?to={email}'
+            f'&smtp={settings.smtp_server_proton}'
+            f'&user={settings.proton_user}'
+            f'&pass={settings.proton_app_password}'
+            f'&from=Soonish <{settings.proton_user}>'
+        )
+    elif settings.gmail_user and settings.gmail_app_password:
+        apobj.add(
+            f'mailtos://?to={email}'
+            f'&smtp={settings.smtp_server_gmail}'
+            f'&user={settings.gmail_user}'
+            f'&pass={settings.gmail_app_password}'
+            f'&from=Soonish <{settings.gmail_user}>'
+        )
+    else:
+        return False
+    
+    # Send notification
+    result = apobj.notify(
+        title=f"Invitation to {event_name} - Soonish",
+        body=body
+    )
+    
+    return result
