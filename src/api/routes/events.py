@@ -8,6 +8,7 @@ from src.api.dependencies import get_session, get_current_user, get_current_user
 from src.db.models import Event, User
 from src.db.repositories import EventRepository, EventInvitationRepository
 from src.api.services.email import send_invitation_email
+from src.api.templates import render_template
 from typing import Optional
 from src.workflows.event import EventWorkflow
 from src.config import get_settings
@@ -236,21 +237,20 @@ async def list_events(
     
     # Return HTML if requested
     if html:
-        if not events:
-            return HTMLResponse('<div class="card"><p>No events yet. Create your first event!</p></div>')
-        
-        html_content = ""
+        # Annotate events with is_organizer flag for template
+        events_with_context = []
         for event in events:
-            is_organizer = current_user and event.organizer_user_id == current_user.id
-            html_content += f'''
-            <div class="card">
-                <h3>{event.name}</h3>
-                <p>{event.description or "No description"}</p>
-                <p><strong>Start:</strong> {event.start_date.strftime("%Y-%m-%d %H:%M")}</p>
-                {f'<p><strong>Location:</strong> {event.location}</p>' if event.location else ''}
-                <p><strong>Organizer:</strong> {"You" if is_organizer else "Other"}</p>
-            </div>
-            '''
+            event_dict = {
+                "id": event.id,
+                "name": event.name,
+                "description": event.description,
+                "start_date": event.start_date,
+                "location": event.location,
+                "is_organizer": current_user and event.organizer_user_id == current_user.id
+            }
+            events_with_context.append(event_dict)
+        
+        html_content = render_template("events_list.html", events=events_with_context)
         return HTMLResponse(html_content)
     
     # Return JSON (validate with response_model)

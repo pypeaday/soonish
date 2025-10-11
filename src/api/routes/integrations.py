@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.dependencies import get_current_user, get_session as get_db
 from src.api.schemas import IntegrationCreateRequest, IntegrationResponse
+from src.api.templates import render_template
 from src.db.models import User
 from src.db.repositories import IntegrationRepository
 from src.activities.notifications import send_notification
@@ -64,23 +65,7 @@ async def list_integrations(
     
     # Return HTML if requested
     if html:
-        if not integrations:
-            return HTMLResponse('<div class="card"><p>No integrations yet. Add your first notification channel!</p></div>')
-        
-        html_content = ""
-        for integration in integrations:
-            status = "✅ Active" if integration.is_active else "❌ Inactive"
-            html_content += f'''
-            <div class="card">
-                <h3>{integration.name}</h3>
-                <p><strong>Tag:</strong> {integration.tag}</p>
-                <p><strong>Status:</strong> {status}</p>
-                <button hx-post="/api/integrations/{integration.id}/test" 
-                        hx-target="this" 
-                        hx-swap="outerHTML"
-                        class="secondary">Test</button>
-            </div>
-            '''
+        html_content = render_template("integrations_list.html", integrations=integrations)
         return HTMLResponse(html_content)
     
     # Return JSON (validate with response_model)

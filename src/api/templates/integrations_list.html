@@ -1,0 +1,15 @@
+{% if integrations %}
+  {% for integration in integrations %}
+  <div class="card">
+    <h3>{{ integration.name }}</h3>
+    <p><strong>Tag:</strong> {{ integration.tag }}</p>
+    <p><strong>Status:</strong> {{ "✅ Active" if integration.is_active else "❌ Inactive" }}</p>
+    <button hx-post="/api/integrations/{{ integration.id }}/test" 
+            hx-target="this" 
+            hx-swap="outerHTML"
+            class="secondary">Test</button>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="card"><p>No integrations yet. Add your first notification channel!</p></div>
+{% endif %}

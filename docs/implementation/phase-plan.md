@@ -22,10 +22,11 @@
 13. [Current Project Structure](#current-project-structure-after-phase-9)
 14. [Phase 10: Integrations API](#phase-10-integrations-api-1-day)
 15. [Phase 11: Custom Reminder Preferences](#phase-11-custom-reminder-preferences-1-day)
-16. [Testing Strategy](#testing-strategy)
-17. [Post-MVP Enhancements](#post-mvp-enhancements)
-18. [Quick Reference Commands](#quick-reference-commands)
-19. [Dependency Checklist](#dependency-checklist)
+16. [Phase 15: Integration Configuration System](#phase-15-integration-configuration-system-2-3-days)
+17. [Testing Strategy](#testing-strategy)
+18. [Post-MVP Enhancements](#post-mvp-enhancements)
+19. [Quick Reference Commands](#quick-reference-commands)
+20. [Dependency Checklist](#dependency-checklist)
 
 ---
 
@@ -2454,6 +2455,66 @@ uv run scripts/test_notifications.py
 4. **Auth failing** → Regenerate `SECRET_KEY` in .env
 5. **Notifications not sending** → Check integration `is_active=true`, verify Apprise URL
 6. **Nuclear option** → `rm soonish.db && uv run scripts/init_db.py`
+
+---
+
+## Phase 15: Integration Configuration System (2-3 days)
+
+**Goal**: Transform integration configuration from raw Apprise URLs to user-friendly forms.
+
+**Key Principle**: Users provide only tokens/URLs/credentials - backend handles Apprise URL conversion.
+
+### Quick Overview
+
+- **Database**: Add `integration_type` and `config_json_encrypted` columns
+- **Registry Pattern**: Central registry of all integration converters
+- **6 Converters**: Gotify, Email, Ntfy, Discord, Slack, Telegram
+- **API**: Single endpoint for all integration types
+- **Testing**: Unit tests + integration tests + manual testing
+
+### Implementation
+
+See **`docs/implementation/phase-15-integration-config.md`** for complete step-by-step guide.
+
+### Key Files
+
+**Created** (~990 lines):
+- `src/api/services/integration_registry.py`
+- `src/api/services/integration_converters/` (6 converters)
+- `scripts/migrate_phase_15.py`
+- `tests/test_integration_converters.py`
+
+**Modified** (~90 lines):
+- `src/db/models.py` - Add integration_type, config_json
+- `src/api/schemas.py` - Add IntegrationCreateRequestV2
+- `src/api/routes/integrations.py` - Add new endpoints
+
+### Acceptance Criteria
+
+- ✅ Users can create integrations with simple configs (no Apprise URLs)
+- ✅ Backend converts to Apprise URLs automatically
+- ✅ All 6 integration types supported
+- ✅ Existing integrations continue to work (backward compatible)
+- ✅ `/api/integrations/types` returns field schemas for dynamic forms
+- ✅ Test integration functionality works
+- ✅ All tests pass
+
+### Testing
+
+```bash
+# Run migration
+uv run python scripts/migrate_phase_15.py
+
+# Run tests
+uv run pytest tests/test_integration_converters.py -v
+uv run pytest tests/test_integration_api_v2.py -v
+
+# Manual test
+uv run python scripts/test_phase_15.py
+
+# Check code quality
+uv run ruff check --fix src/
+```
 
 ---
 

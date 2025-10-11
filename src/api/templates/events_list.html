@@ -1,0 +1,15 @@
+{% if events %}
+  {% for event in events %}
+  <div class="card">
+    <h3>{{ event.name }}</h3>
+    <p>{{ event.description or "No description" }}</p>
+    <p><strong>Start:</strong> {{ event.start_date.strftime("%Y-%m-%d %H:%M") }}</p>
+    {% if event.location %}
+    <p><strong>Location:</strong> {{ event.location }}</p>
+    {% endif %}
+    <p><strong>Organizer:</strong> {{ "You" if event.is_organizer else "Other" }}</p>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="card"><p>No events yet. Create your first event!</p></div>
+{% endif %}
