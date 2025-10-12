@@ -99,9 +99,9 @@ async def test_private_events():
             private_event_ids = [e["id"] for e in events if not e["is_public"]]
             
             if event_id not in [e["id"] for e in events]:
-                console.print(f"   ✅ Private event NOT in public listing", style="green")
+                console.print("   ✅ Private event NOT in public listing", style="green")
             else:
-                console.print(f"   ⚠️  Private event visible in public listing!", style="yellow")
+                console.print("   ⚠️  Private event visible in public listing!", style="yellow")
         else:
             console.print(f"   ❌ Failed: {resp.status_code}", style="red")
         
@@ -113,7 +113,7 @@ async def test_private_events():
         )
         
         if resp.status_code == 403:
-            console.print(f"   ✅ Unauthorized user correctly blocked (403)", style="green")
+            console.print("   ✅ Unauthorized user correctly blocked (403)", style="green")
         else:
             console.print(f"   ⚠️  Unexpected status: {resp.status_code}", style="yellow")
             console.print(f"   {resp.text}")
@@ -123,7 +123,7 @@ async def test_private_events():
         resp = await client.get(f"{API_BASE}/api/events/{event_id}")
         
         if resp.status_code == 401:
-            console.print(f"   ✅ Anonymous user correctly blocked (401)", style="green")
+            console.print("   ✅ Anonymous user correctly blocked (401)", style="green")
         else:
             console.print(f"   ⚠️  Unexpected status: {resp.status_code}", style="yellow")
         
@@ -152,7 +152,7 @@ async def test_private_events():
             result = resp.json()
             invitation_id = result["invitation_id"]
             console.print(f"   ✅ {result['message']}", style="green")
-            console.print(f"   📧 Invitation email sent (check logs)", style="dim")
+            console.print("   📧 Invitation email sent (check logs)", style="dim")
             console.print(f"   🎫 Invitation ID: {invitation_id}", style="dim")
         else:
             console.print(f"   ❌ Failed: {resp.status_code}", style="red")
@@ -183,7 +183,7 @@ async def test_private_events():
         )
         
         if resp.status_code == 403:
-            console.print(f"   ✅ Unauthorized user correctly blocked", style="green")
+            console.print("   ✅ Unauthorized user correctly blocked", style="green")
         else:
             console.print(f"   ⚠️  Unexpected status: {resp.status_code}", style="yellow")
         
@@ -195,7 +195,7 @@ async def test_private_events():
         )
         
         if resp.status_code == 204:
-            console.print(f"   ✅ Invitation revoked", style="green")
+            console.print("   ✅ Invitation revoked", style="green")
         else:
             console.print(f"   ❌ Failed: {resp.status_code}", style="red")
         
@@ -209,7 +209,7 @@ async def test_private_events():
         if resp.status_code == 200:
             invitations = resp.json()
             if len(invitations) == 0:
-                console.print(f"   ✅ No invitations remaining", style="green")
+                console.print("   ✅ No invitations remaining", style="green")
             else:
                 console.print(f"   ⚠️  Still {len(invitations)} invitation(s)", style="yellow")
         
@@ -238,7 +238,7 @@ async def test_private_events():
             # Verify public event IS visible to anonymous users
             resp = await client.get(f"{API_BASE}/api/events/{public_event_id}")
             if resp.status_code == 200:
-                console.print(f"   ✅ Public event visible to anonymous users", style="green")
+                console.print("   ✅ Public event visible to anonymous users", style="green")
             else:
                 console.print(f"   ⚠️  Public event not visible: {resp.status_code}", style="yellow")
         
@@ -248,8 +248,8 @@ async def test_private_events():
         console.print("\n📝 Summary:", style="bold")
         console.print(f"   - Private event created (ID: {event_id})")
         console.print(f"   - Public event created (ID: {public_event_id})")
-        console.print(f"   - Authorization working correctly")
-        console.print(f"   - Invitation system functional")
+        console.print("   - Authorization working correctly")
+        console.print("   - Invitation system functional")
         console.print("\n💡 Key Features Tested:", style="bold")
         console.print("   ✅ Private events not in public listings")
         console.print("   ✅ Unauthorized users blocked (401/403)")

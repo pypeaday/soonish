@@ -40,7 +40,7 @@ async def test_verification_flow():
         if resp.status_code == 201:
             user_data = resp.json()
             console.print(f"   ✅ User registered: {user_data['email']}", style="green")
-            console.print(f"   📧 Verification email sent (check logs)", style="dim")
+            console.print("   📧 Verification email sent (check logs)", style="dim")
             console.print(f"   ⚠️  is_verified: {user_data['is_verified']}", style="yellow")
         else:
             console.print(f"   ❌ Registration failed: {resp.status_code}", style="red")
@@ -54,7 +54,6 @@ async def test_verification_flow():
         
         # Create a verification token manually for testing
         from src.api.auth.verification import create_verification_token
-        from src.db.models import User
         
         # Create a mock user object with the data we have
         mock_user = type('User', (), {
@@ -75,7 +74,7 @@ async def test_verification_flow():
         if resp.status_code == 200:
             result = resp.json()
             console.print(f"   ✅ {result['message']}", style="green")
-            console.print(f"   📧 Welcome email sent", style="dim")
+            console.print("   📧 Welcome email sent", style="dim")
         else:
             console.print(f"   ❌ Verification failed: {resp.status_code}", style="red")
             console.print(f"   {resp.text}")
@@ -105,7 +104,7 @@ async def test_verification_flow():
         )
         
         if resp.status_code == 400:
-            console.print(f"   ✅ Correctly rejected: Email already verified", style="green")
+            console.print("   ✅ Correctly rejected: Email already verified", style="green")
         else:
             console.print(f"   ⚠️  Unexpected status: {resp.status_code}", style="yellow")
             console.print(f"   {resp.text}")
@@ -120,7 +119,7 @@ async def test_verification_flow():
         if resp.status_code == 200:
             result = resp.json()
             console.print(f"   ✅ Security: {result['message']}", style="green")
-            console.print(f"   ℹ️  Doesn't reveal if email exists", style="dim")
+            console.print("   ℹ️  Doesn't reveal if email exists", style="dim")
         else:
             console.print(f"   ⚠️  Unexpected: {resp.status_code}", style="yellow")
         
@@ -136,8 +135,8 @@ async def test_verification_flow():
         
         if resp.status_code == 200:
             result = resp.json()
-            console.print(f"   ✅ Login successful", style="green")
-            console.print(f"   🔑 Access token received", style="dim")
+            console.print("   ✅ Login successful", style="green")
+            console.print("   🔑 Access token received", style="dim")
         else:
             console.print(f"   ❌ Login failed: {resp.status_code}", style="red")
     
