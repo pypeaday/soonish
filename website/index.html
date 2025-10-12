@@ -1,108 +1,156 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-
-  <meta property="og:title" content="Notifiq" />
-  <meta name="twitter:title" content="Notifiq" />
-  <meta name="twitter:card" content="summary_large_image">
-  <meta property="og:image" content="og-image.svg">
-  <meta name="twitter:image" name="twitter:image" content="og-image.svg">
-  <meta property="og:url" content="https://notifiq.net/">
-  <meta name="twitter:creator" content="@soonishapp">
-  <meta name="twitter:site" content="@soonishapp">
-
-  <title>Notifiq</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Notifiq — Signal with Confidence</title>
   <style>
     :root {
-      --bg-dark: #0a0a0a;
-      --accent: #3D9970; /* Deep Seafoam Green */
-      --text-light: #f0f0f0;
-      --text-muted: #888;
+      --deep-navy: #082233;
+      --teal: #00c0c0;
+      --seafoam: #dcfafa;
+      --sunrise: #ffd580;
+      --white: #ffffff;
     }
+
     body {
-      margin:0; padding:0; font-family:'Inter', 'Segoe UI', sans-serif;
-      background:var(--bg-dark); color:var(--text-light);
-      display:flex; flex-direction:column; min-height:100vh;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-    header {
-      text-align:center; padding:140px 20px 80px;
-      background:radial-gradient(circle at top, #1a1a1a 0%, #0a0a0a 100%);
-    }
-    header h1 {
-      font-size:5rem; letter-spacing:1px; font-weight:800;
-      background:linear-gradient(90deg, #3D9970, #20B2AA);
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-      color: transparent;
       margin: 0;
+      font-family: "Inter", sans-serif;
+      background: linear-gradient(180deg, var(--deep-navy) 0%, #0b2f44 60%, #113d55 100%);
+      color: var(--seafoam);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      justify-content: center;
     }
-    header p {
-      font-size:1.4rem; max-width:600px; margin:20px auto 0;
-      color:var(--text-muted);
-      font-weight: 300;
+
+    h1 {
+      font-size: 3.2rem;
+      color: var(--teal);
+      letter-spacing: 0.5px;
+      margin-bottom: 0.5rem;
     }
-    .teaser {
-      max-width:900px; margin:60px auto; text-align:center; padding:0 20px;
-      font-size:1.5rem; font-weight:300; color:#ccc;
+
+    h2 {
+      font-weight: 400;
+      color: var(--sunrise);
+      font-size: 1.3rem;
+      margin-bottom: 2rem;
+    }
+
+    p {
+      max-width: 620px;
+      font-size: 1.1rem;
       line-height: 1.6;
+      color: var(--seafoam);
+      margin: 0 auto 2rem;
     }
-    .teaser strong {
-      color: var(--text-light);
-      font-weight: 700;
+
+    .coming-soon {
+      color: var(--sunrise);
+      font-size: 1.3rem;
+      letter-spacing: 0.5px;
     }
-    .cta {
-      text-align:center; margin:40px 0 80px;
-    }
-    .cta a {
-      background:var(--accent); color:#fff; text-decoration:none;
-      padding:16px 36px; border-radius:50px; font-weight:700;
-      letter-spacing:1px; transition: transform .3s ease, opacity .3s ease;
-      display: inline-block;
-    }
-    .cta a:hover {
-      transform: scale(1.05);
-      opacity:0.9;
-    }
+
     footer {
-      text-align:center; font-size:0.9rem; color:var(--text-muted);
-      padding:40px 20px; margin-top:auto; border-top:1px solid #1c1c1c;
+      position: relative;
+      /* change from absolute if needed */
+      z-index: 10;
+      /* ensures it's above glow/wave */
+      text-align: center;
+      margin-top: 2rem;
+      font-size: 0.85rem;
+      color: var(--seafoam);
+      opacity: 0.8;
     }
-    footer p {
-      margin: 5px 0;
-    }
+
+
     footer a {
-      color: #bbb;
+      color: var(--seafoam);
       text-decoration: none;
-      transition: color .3s ease;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      transition: all 0.3s ease;
     }
+
     footer a:hover {
-      color: var(--accent);
+      color: var(--sunrise);
+      border-bottom-color: var(--sunrise);
+    }
+
+    .glow,
+    .wave {
+      z-index: 0;
+    }
+
+    .wave {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 120px;
+      background: url('https://www.transparenttextures.com/patterns/wavecut.png');
+      opacity: 0.08;
+      animation: drift 20s linear infinite;
+    }
+
+    @keyframes drift {
+      from {
+        background-position-x: 0;
+      }
+
+      to {
+        background-position-x: 1000px;
+      }
+    }
+
+    .glow {
+      position: absolute;
+      top: 20%;
+      left: 50%;
+      width: 180px;
+      height: 180px;
+      background: radial-gradient(circle, rgba(0, 192, 192, 0.25) 0%, transparent 70%);
+      transform: translateX(-50%);
+      filter: blur(40px);
+      animation: pulse 6s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 0.4;
+        transform: translateX(-50%) scale(1);
+      }
+
+      50% {
+        opacity: 0.7;
+        transform: translateX(-50%) scale(1.15);
+      }
     }
   </style>
 </head>
+
 <body>
-  <header>
-    <h1>Notifiq</h1>
-    <p>Notifications that are... magnifique!</p>
-  </header>
-
-  <div class="teaser">
-    <p>Built on <strong>Temporal</strong> and <strong>Apprise</strong> to orchestrate and deliver critical messages with precision and reliability. Your data is never sold, just securely encrypted and delivered.</p>
-  </div>
-
-  <div class="cta">
-    <a href="mailto:nic@mydigitalharbor.com">Get Early Access</a>
-  </div>
+  <div class="glow"></div>
+  <h1>Notifiq</h1>
+  <h2>Signal with Confidence</h2>
+  <p>
+    Reliable, encrypted notifications built for whatever you want.
+    <br />
+    Deliver notifications via the apps and services you already use.
+  </p>
+  <div class="coming-soon">⚓ Coming Soon</div>
 
   <footer>
-    <p>© 2025 Notifiq — Privacy-first notifications. Coming soon.</p>
-    <p>A <a href="https://mydigitalharbor.com" target="_blank" rel="noopener noreferrer">Digital Harbor</a> product.</p>
+    © 2025 Notifiq — a
+    <a href="https://mydigitalharbor.com" target="_blank" rel="noopener">Digital Harbor</a> project
   </footer>
-</body>
-</html>
 
+  <div class="wave"></div>
+</body>
+
+</html>
