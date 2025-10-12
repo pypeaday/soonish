@@ -28,8 +28,8 @@ up:
     trap 'kill $(jobs -p) 2>/dev/null' EXIT
     just new-db
     uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload &
+    # Note: Worker doesn't auto-reload - restart 'just up' after workflow changes
     uv run python -m src.worker.main &
-    datasette serve soonish.db &
     wait
 
 check-services:
@@ -38,3 +38,6 @@ check-services:
 integration:
     @just check-services
     uv run scripts/test_workflow_integration.py
+
+find-rogue-workers:
+    ps aux | grep "python.*worker" | grep -v grep | grep -v "uv run"
