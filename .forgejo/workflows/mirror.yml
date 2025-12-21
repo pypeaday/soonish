@@ -1,0 +1,20 @@
+# Works, but the mirror is handled in my gh-pages deployment
+name: Sanitize and Mirror
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches: [ main ]
+
+jobs:
+  sanitize-and-mirror:
+    runs-on: docker
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: https://git.paynepride.com/nic/homelab-mono/devops/ci/forgejo-actions/sanitized-github-mirror@main
+      with:
+        remove: "backend,frontend-adhd-reminders,frontend-developer-user,frontend-event-planner,frontend-it-team-alerts,frontend-mind,frontend-mission-control,frontend-personal-events-tracker,frontend-volunteer-coordinator"
+        github_repo: pypeaday/soonish
+        ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY_FORGEJO_MIRROR_BOT }}
