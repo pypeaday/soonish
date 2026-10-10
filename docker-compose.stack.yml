@@ -1,0 +1,87 @@
+# Isolated local e2e stack — built from THIS checkout's source, not the
+# registry image. Driven by scripts/agent-stack.sh (just stack-up/-down/-test).
+#
+# - Temporal runs embedded (`temporal server start-dev`) — no external
+#   networks, no ghost deps.
+# - Published ports are ephemeral (127.0.0.1::PORT) so concurrent worktree
+#   stacks can't collide; discover them via `docker compose -p <proj> port`.
+# - Compose project name comes from --env-file STACK_* vars / -p flag, so each
+#   worktree gets its own containers, network, and sqlite volume.
+
+x-notifiq-stack-service: &notifiq-stack-service
+  image: ${STACK_IMAGE:-notifiq-e2e:local}
+  working_dir: /app/backend
+  env_file: ${STACK_ENV_FILE:-.env.stack}
+  environment:
+    DATABASE_URL: sqlite+aiosqlite:////data/notifiq.db
+    TEMPORAL_URL: temporal:7233
+    TEMPORAL_NAMESPACE: default
+    TEMPORAL_TASK_QUEUE: ${TEMPORAL_TASK_QUEUE:-notifiq-task-queue}
+    SPA_ROOT: /srv/notifiq/frontends/frontend-website/dist
+    SPA_MOUNTS: '${SPA_MOUNTS:-{"/mission-control":"/srv/notifiq/frontends/frontend-mission-control/dist","/volunteer-coordinator":"/srv/notifiq/frontends/frontend-volunteer-coordinator/dist","/event-planner":"/srv/notifiq/frontends/frontend-event-planner/dist","/duty-pager":"/srv/notifiq/frontends/frontend-it-team-alerts/dist","/developer-user":"/srv/notifiq/frontends/frontend-developer-user/dist","/tasks":"/srv/notifiq/frontends/frontend-eisenhower-tasks/dist","/stage-manager":"/srv/notifiq/frontends/frontend-theater-volunteer/dist","/adhd-reminders":"/srv/notifiq/frontends/frontend-adhd-reminders/dist","/mindful":"/srv/notifiq/frontends/frontend-mind/dist"}}'
+    FRONTEND_URLS: '${FRONTEND_URLS:-{"soonish":"http://localhost:8000","mission-control":"http://localhost:8000/mission-control","notifiq-event-planner":"http://localhost:8000/event-planner","notifiq-volunteer-coordinator":"http://localhost:8000/volunteer-coordinator","notifiq-theater-volunteer":"http://localhost:8000/stage-manager","notifiq-eisenhower":"http://localhost:8000/tasks","notifiq-adhd-reminders":"http://localhost:8000/adhd-reminders","notifiq-it-console":"http://localhost:8000/duty-pager","notifiq-mindful":"http://localhost:8000/mindful"}}'
+  volumes:
+    - notifiq_data:/data
+  depends_on:
+    temporal:
+      condition: service_started
+
+services:
+  temporal:
+    image: temporalio/admin-tools:${TEMPORAL_IMAGE_TAG:-latest}
+    entrypoint:
+      - /usr/local/bin/temporal
+      - server
+      - start-dev
+      - --ip
+      - 0.0.0.0
+      - --ui-ip
+      - 0.0.0.0
+      - --log-level
+      - warn
+    ports:
+      - "${STACK_BIND:-127.0.0.1}::8233" # web UI
+      - "${STACK_BIND:-127.0.0.1}::7233" # gRPC — lets a host-side `temporal` CLI reach this stack
+    restart: unless-stopped
+
+  init-db:
+    <<: *notifiq-stack-service
+    restart: "no"
+    command: ["uv", "run", "alembic", "upgrade", "head"]
+
+  api:
+    <<: *notifiq-stack-service
+    # Single build site — init-db/worker share the image. One build target
+    # avoids buildx's "image already exists" race on containerd-store
+    # daemons (DinD) when several services tag the same image.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      temporal:
+        condition: service_started
+      init-db:
+        condition: service_completed_successfully
+    command: ["uv", "run", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${STACK_BIND:-127.0.0.1}::8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  worker:
+    <<: *notifiq-stack-service
+    depends_on:
+      temporal:
+        condition: service_started
+      init-db:
+        condition: service_completed_successfully
+    command: ["uv", "run", "python", "-m", "src.worker.main"]
+    restart: unless-stopped
+
+volumes:
+  notifiq_data:

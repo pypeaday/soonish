@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Eisenhower Matrix Guide{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <header class="text-center mb-8">
+        <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-2">A Guide to the Eisenhower Matrix</h1>
+        <p class="text-lg text-gray-600 dark:text-gray-400">Master task prioritization and boost productivity</p>
+    </header>
+
+    <!-- Introduction -->
+    <section class="mb-8">
+        <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-4">What is the Eisenhower Matrix?</h2>
+        <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+            Named after President Dwight D. Eisenhower, the Eisenhower Matrix categorizes tasks based on two criteria: urgency and importance. It helps individuals and teams prioritize effectively, focusing on tasks that truly matter.
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border-l-4 border-blue-500">
+                <h3 class="text-xl font-semibold text-blue-600 dark:text-blue-400">Quadrant 1: Urgent and Important</h3>
+                <p class="text-gray-600 dark:text-gray-400 mt-2">Tasks requiring immediate attention and critical to your goals.</p>
+                <p class="text-gray-500 dark:text-gray-500 text-sm">Example: Addressing client crises, meeting tight deadlines.</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border-l-4 border-green-500">
+                <h3 class="text-xl font-semibold text-green-600 dark:text-green-400">Quadrant 2: Not Urgent but Important</h3>
+                <p class="text-gray-600 dark:text-gray-400 mt-2">Tasks contributing to long-term goals but not time-sensitive.</p>
+                <p class="text-gray-500 dark:text-gray-500 text-sm">Example: Strategic planning, skill development.</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border-l-4 border-yellow-500">
+                <h3 class="text-xl font-semibold text-yellow-600 dark:text-yellow-400">Quadrant 3: Urgent but Not Important</h3>
+                <p class="text-gray-600 dark:text-gray-400 mt-2">Tasks demanding attention but not critical to your goals.</p>
+                <p class="text-gray-500 dark:text-gray-500 text-sm">Example: Minor emails, scheduling meetings.</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border-l-4 border-red-500">
+                <h3 class="text-xl font-semibold text-red-600 dark:text-red-400">Quadrant 4: Neither Urgent nor Important</h3>
+                <p class="text-gray-600 dark:text-gray-400 mt-2">Tasks that neither add value nor require attention.</p>
+                <p class="text-gray-500 dark:text-gray-500 text-sm">Example: Excessive social media scrolling.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Power of Prioritization -->
+    <section class="mb-8">
+        <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-4">The Power of Prioritization</h2>
+        <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+            The Eisenhower Matrix emphasizes prioritization, enabling clarity, time efficiency, stress reduction, and long-term success. By focusing on tasks that matter most, you can:
+        </p>
+        <ul class="list-disc list-inside mt-4 space-y-2 text-gray-600 dark:text-gray-400">
+            <li><strong class="text-gray-900 dark:text-white">Gain Clarity:</strong> Identify where to concentrate your efforts.</li>
+            <li><strong class="text-gray-900 dark:text-white">Save Time:</strong> Allocate time to high-value tasks.</li>
+            <li><strong class="text-gray-900 dark:text-white">Reduce Stress:</strong> Address pressing tasks first.</li>
+            <li><strong class="text-gray-900 dark:text-white">Achieve Goals:</strong> Focus on long-term objectives.</li>
+        </ul>
+    </section>
+
+    <!-- Task Prioritization vs. Task Tracking -->
+    <section class="mb-8">
+        <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Task Prioritization vs. Task Tracking</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <h3 class="text-xl font-semibold text-blue-600 dark:text-blue-400">Task Prioritization</h3>
+                <p class="text-gray-600 dark:text-gray-400 mt-2">
+                    Determines <strong class="text-gray-900 dark:text-white">what</strong> to work on and <strong class="text-gray-900 dark:text-white">when</strong>, based on urgency and importance. This helps filter out low-value activities and identify critical tasks.
+                </p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <h3 class="text-xl font-semibold text-green-600 dark:text-green-400">Task Tracking</h3>
+                <p class="text-gray-600 dark:text-gray-400 mt-2">
+                    Monitors progress and ensures task completion. Provides visibility into all tasks—prioritized or not—and their status.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- How to Use the Eisenhower Matrix -->
+    <section>
+        <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-4">How to Use the Eisenhower Matrix</h2>
+        <ol class="list-decimal list-inside mt-4 space-y-2 text-gray-600 dark:text-gray-400">
+            <li><strong class="text-gray-900 dark:text-white">List Your Tasks:</strong> Write down everything you need to accomplish.</li>
+            <li><strong class="text-gray-900 dark:text-white">Categorize by Urgency and Importance:</strong> Place tasks into the appropriate quadrant.</li>
+            <li><strong class="text-gray-900 dark:text-white">Act Based on Quadrants:</strong>
+                <ul class="list-disc list-inside ml-6 mt-2">
+                    <li><strong class="text-gray-900 dark:text-white">Quadrant 1:</strong> Do these tasks immediately.</li>
+                    <li><strong class="text-gray-900 dark:text-white">Quadrant 2:</strong> Schedule time for these tasks.</li>
+                    <li><strong class="text-gray-900 dark:text-white">Quadrant 3:</strong> Delegate these tasks.</li>
+                    <li><strong class="text-gray-900 dark:text-white">Quadrant 4:</strong> Eliminate these tasks.</li>
+                </ul>
+            </li>
+            <li><strong class="text-gray-900 dark:text-white">Review and Adjust:</strong> Revisit periodically to adapt to changes.</li>
+        </ol>
+    </section>
+</div>
+{% endblock %}

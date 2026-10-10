@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-notifiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-notifiq}
+      POSTGRES_DB: ${POSTGRES_DB:-notifiq}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-notifiq} -d ${POSTGRES_DB:-notifiq}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    volumes:
+      - notifiq_postgres_data:/var/lib/postgresql/data
+
+  init-db:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://notifiq:notifiq@postgres:5432/notifiq}
+
+  api:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      init-db:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://notifiq:notifiq@postgres:5432/notifiq}
+
+  worker:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      init-db:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://notifiq:notifiq@postgres:5432/notifiq}
+
+volumes:
+  notifiq_postgres_data:

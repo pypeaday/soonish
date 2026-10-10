@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Append evidence to proof/<branch-slug>.md — the manifest that travels with a PR.
+#
+#   scripts/proof init "Short title for the change"
+#   scripts/proof note "Claim: GET /api/v1/foo returns 200 for an authed user"
+#   scripts/proof exec bash "curl -s localhost:8000/health | jq ."
+#   scripts/proof verify          # re-run every block, diff against recorded output
+#   scripts/proof pop             # drop the last block (e.g. a typo'd command)
+#
+# Thin wrapper over `uvx showboat` (https://pypi.org/project/showboat): it runs
+# the command, prints the output, AND records "command + captured output" into
+# the manifest, exiting with the command's own exit code. Nothing is added to
+# the project's dependencies — uvx fetches it ephemerally.
+#
+# Env:
+#   PROOF_FILE      manifest path (default: proof/<branch-slug>.md, e.g. the
+#                   branch feat/my-change writes proof/my-change.md, so open
+#                   PRs never conflict on one file)
+#   SHOWBOAT_SPEC   uvx spec, e.g. showboat==0.3.0 (default: showboat)
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+# Slug = last path segment of the branch name (feat/agent-x -> agent-x).
+SLUG="$(basename "$(git rev-parse --abbrev-ref HEAD)")"
+SLUG="$(printf '%s' "$SLUG" | tr -c 'a-zA-Z0-9._-' '-')"
+PROOF_FILE="${PROOF_FILE:-$REPO_ROOT/proof/$SLUG.md}"
+SHOWBOAT_SPEC="${SHOWBOAT_SPEC:-showboat}"
+
+if [ "$#" -eq 0 ]; then
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    exit 2
+fi
+
+if ! command -v uvx >/dev/null 2>&1; then
+    cat >&2 <<EOF
+FAIL: uvx not found, so the proof helper cannot run.
+Write the evidence block into $PROOF_FILE by hand instead:
+
+    ### Claim: <what you are proving>
+
+    ```bash
+    <the exact command you ran>
+    ```
+
+    ```output
+    <the real, unedited output>
+    ```
+EOF
+    exit 1
+fi
+
+SUB="$1"; shift
+exec uvx "$SHOWBOAT_SPEC" "$SUB" "$PROOF_FILE" "$@"

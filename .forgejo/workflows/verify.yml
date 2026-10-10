@@ -1,0 +1,78 @@
+name: Verify
+
+on:
+  workflow_dispatch:
+
+  pull_request:
+
+  push:
+    branches: [main]
+
+jobs:
+  # The baseline proof: `just verify` (backend lint + tests + every frontend).
+  # Runs inside git.paynepride.com/nic/notifiq-ci (see ci/Dockerfile) which
+  # already contains uv, just, node 20, python 3.11, the temporal CLI and the
+  # pre-fetched temporal-test-server binary — no installs, no runtime downloads.
+  verify:
+    runs-on: docker
+    container:
+      image: git.paynepride.com/nic/notifiq-ci:0.1.0
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.FORGEJO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Belt and braces: nothing in CI may address prod Temporal (the image
+      # also sets TEMPORAL_URL=localhost:7233).
+      - name: just verify
+        env:
+          TEMPORAL_URL: localhost:7233
+        run: |
+          temporal --version
+          uv --version
+          just --version
+          just verify
+
+  # The same `just stack-*` e2e lane agents run locally — Temporal + api +
+  # worker + all frontends, built from this commit. Runs in the default job
+  # image (docker CLI + compose baked in); the daemon is the runner's DinD
+  # service, so ports bind 0.0.0.0 and are reached via the runner-injected
+  # `docker-in-docker.docker.internal` hostname instead of localhost.
+  stack:
+    runs-on: docker
+    env:
+      STACK_BIND: 0.0.0.0
+      STACK_HOST: docker-in-docker.docker.internal
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: stack up
+        run: scripts/agent-stack.sh up
+
+      - name: smoke
+        run: scripts/agent-stack.sh test
+
+      - name: stack down
+        if: always()
+        run: scripts/agent-stack.sh down
+
+  # A PR without a proof manifest is not done.
+  proof-manifest:
+    if: github.event_name == 'pull_request'
+    runs-on: docker
+    container:
+      image: git.paynepride.com/nic/notifiq-ci:0.1.0
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.FORGEJO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Same script the agent runs locally via `just proof-check`.
+      - name: PROOF.md must be updated in this PR
+        run: |
+          git fetch --no-tags origin "${GITHUB_BASE_REF:-main}"
+          ./scripts/check-proof.sh "${GITHUB_BASE_REF:-main}"

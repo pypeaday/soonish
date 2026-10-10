@@ -1,0 +1,88 @@
+x-notifiq-service: &notifiq-service
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: ${NOTIFIQ_IMAGE:-notifiq-app:dev}
+  working_dir: /app/backend
+  environment:
+    DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////data/notifiq.db}
+    DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+    DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+    DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+    TEMPORAL_URL: ${TEMPORAL_URL:-temporal:7233}
+    TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
+    TEMPORAL_TASK_QUEUE: ${TEMPORAL_TASK_QUEUE:-notifiq-task-queue}
+    ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+    SECRET_KEY: ${SECRET_KEY:-}
+    DEBUG: ${DEBUG:-true}
+    DEV_MODE: ${DEV_MODE:-true}
+    ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@example.com}
+    API_BASE_URL: ${API_BASE_URL:-http://localhost:8000}
+    FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:8000}
+    CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:8000","http://127.0.0.1:8000"]}'
+    COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+    TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+    BILLING_ENABLED: ${BILLING_ENABLED:-false}
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_FROM: ${SMTP_FROM:-}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    OTEL_ENABLED: ${OTEL_ENABLED:-false}
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://signoz-otel-collector:4317}
+    OTEL_HTTP_ENDPOINT: ${OTEL_HTTP_ENDPOINT:-http://signoz-otel-collector:4318}
+    OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-notifiq}
+    FRONTEND_URLS: '${FRONTEND_URLS:-{"soonish":"http://localhost:8000","mission-control":"http://localhost:8000/mission-control","notifiq-event-planner":"http://localhost:8000/event-planner","notifiq-volunteer-coordinator":"http://localhost:8000/volunteer-coordinator","notifiq-theater-volunteer":"http://localhost:8000/stage-manager","notifiq-eisenhower":"http://localhost:8000/tasks","notifiq-adhd-reminders":"http://localhost:8000/adhd-reminders","notifiq-it-console":"http://localhost:8000/duty-pager"}}'
+    SPA_ROOT: ${SPA_ROOT:-/srv/notifiq/frontends/frontend-website/dist}
+    SPA_MOUNTS: '${SPA_MOUNTS:-{"/mission-control":"/srv/notifiq/frontends/frontend-mission-control/dist","/volunteer-coordinator":"/srv/notifiq/frontends/frontend-volunteer-coordinator/dist","/event-planner":"/srv/notifiq/frontends/frontend-event-planner/dist","/duty-pager":"/srv/notifiq/frontends/frontend-it-team-alerts/dist","/developer-user":"/srv/notifiq/frontends/frontend-developer-user/dist","/tasks":"/srv/notifiq/frontends/frontend-eisenhower-tasks/dist","/stage-manager":"/srv/notifiq/frontends/frontend-theater-volunteer/dist","/adhd-reminders":"/srv/notifiq/frontends/frontend-adhd-reminders/dist","/mindful":"/srv/notifiq/frontends/frontend-mind/dist"}}'
+  volumes:
+    - notifiq_data:/data
+
+services:
+  init-db:
+    <<: *notifiq-service
+    restart: "no"
+    command: ["uv", "run", "alembic", "upgrade", "head"]
+
+  api:
+    <<: *notifiq-service
+    depends_on:
+      init-db:
+        condition: service_completed_successfully
+    command: ["uv", "run", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - default
+      - temporal-network
+      - phantomlink
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    <<: *notifiq-service
+    depends_on:
+      init-db:
+        condition: service_completed_successfully
+    command: ["uv", "run", "python", "-m", "src.worker.main"]
+    networks:
+      - default
+      - temporal-network
+      - phantomlink
+    restart: unless-stopped
+
+networks:
+  temporal-network:
+    external: true
+  phantomlink:
+    external: true
+
+volumes:
+  notifiq_data:

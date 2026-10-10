@@ -1,0 +1,10 @@
+# docker-compose.yml
+name: notifiq-edge
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    network_mode: host
+    restart: unless-stopped
+    # TUNNEL_TOKEN=$(tofu output -raw tunnel_token) docker compose up -d
+    command: tunnel --no-autoupdate --metrics :20241 run --token ${TUNNEL_TOKEN}

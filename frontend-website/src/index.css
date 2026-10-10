@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/* Cosmic UI Theme Variables */
+:root {
+  --color-cosmic-bg: #0a0e17;
+  --color-cosmic-surface: #111827;
+  --color-cosmic-border: #1e3a5f;
+  --color-cosmic-glow: #00d4ff;
+  --color-cosmic-accent: #7c3aed;
+  --color-cosmic-success: #10b981;
+  --color-cosmic-warning: #f59e0b;
+  --color-cosmic-danger: #ef4444;
+  --color-cosmic-text: #e2e8f0;
+  --color-cosmic-text-muted: #94a3b8;
+}
+
+/* Base styles */
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--color-cosmic-bg);
+  color: var(--color-cosmic-text);
+  min-height: 100vh;
+}
+
+/* Star field effect */
+.stars {
+  background-image: 
+    radial-gradient(2px 2px at 20px 30px, rgba(255,255,255,0.3), transparent),
+    radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(1px 1px at 90px 40px, rgba(255,255,255,0.4), transparent),
+    radial-gradient(2px 2px at 130px 80px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(1px 1px at 160px 120px, rgba(255,255,255,0.3), transparent),
+    radial-gradient(2px 2px at 200px 50px, rgba(0, 212, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 250px 90px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(2px 2px at 300px 60px, rgba(124, 58, 237, 0.5), transparent);
+  background-size: 350px 150px;
+}
+
+/* Cosmic glow effects */
+.cosmic-glow {
+  box-shadow: 
+    0 0 20px rgba(0, 212, 255, 0.15),
+    0 0 40px rgba(0, 212, 255, 0.1),
+    inset 0 0 20px rgba(0, 212, 255, 0.05);
+}
+
+/* Button glow */
+.btn-glow {
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.3), 0 0 40px rgba(124, 58, 237, 0.2);
+  transition: box-shadow 0.3s ease;
+}
+.btn-glow:hover {
+  box-shadow: 0 0 30px rgba(0, 212, 255, 0.5), 0 0 60px rgba(124, 58, 237, 0.3);
+}
+
+/* Card hover */
+.card-hover {
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 0 30px rgba(0, 212, 255, 0.15);
+}
+
+/* Pulse animation */
+@keyframes cosmic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-cosmic-pulse {
+  animation: cosmic-pulse 2s ease-in-out infinite;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-cosmic-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-cosmic-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-cosmic-glow);
+}

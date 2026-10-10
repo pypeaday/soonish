@@ -1,0 +1,44 @@
+name: Live delivery
+
+# The daily proof that notifications still reach the real world — PR lanes only
+# prove delivery to local sinks. This lane sends for real:
+#   - gotify: send + GET /message read-back assertion (programmatic pass/fail)
+#   - email via configured relay (Resend SMTP): relay-accept is the assert
+#   - SMS via carrier email gateway to TEST_PHONE: fire-and-observe (carriers
+#     don't ACK; if texts stop arriving, this lane is the suspect)
+#
+# Skips silently if the secrets aren't set — safe to land before they exist.
+# Set them under repo Settings > Secrets (see test_live_delivery.py docstring).
+
+on:
+  schedule:
+    - cron: '0 15 * * *'   # ~10:00 US Central daily
+  workflow_dispatch:
+
+jobs:
+  live-delivery:
+    runs-on: docker
+    container:
+      image: git.paynepride.com/nic/notifiq-ci:0.1.0
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.FORGEJO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: just verify-live
+        env:
+          # Ephemeral keys are fine — nothing persists between runs.
+          DEBUG: "true"
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          GOTIFY_URL: ${{ secrets.GOTIFY_URL }}
+          GOTIFY_APP_TOKEN: ${{ secrets.GOTIFY_APP_TOKEN }}
+          GOTIFY_CLIENT_TOKEN: ${{ secrets.GOTIFY_CLIENT_TOKEN }}
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          TEST_PHONE: ${{ secrets.TEST_PHONE }}
+          TEST_CARRIER: ${{ secrets.TEST_CARRIER }}
+        run: just verify-live

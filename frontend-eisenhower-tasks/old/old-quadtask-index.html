@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Active Developmen Notice -->
+<div class="mx-auto max-w-4xl mt-24 mb-16">
+    <div class="rounded-2xl bg-gray-800/5 dark:bg-white/5 ring-1 ring-inset ring-gray-900/10 dark:ring-white/10 p-8">
+        <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-4">QuadTask is under active development!</h2>
+        <p class="text-gray-600 dark:text-gray-300">
+            QuadTask is under active development. Do not expect breaking changes, but expect changes. Reach out on <a href="https://discord.gg/t4Fdtrv2BD" class="text-blue-600 dark:text-blue-400 hover:underline">Discord</a> or Twitter <a href="https://twitter.com/QuadTask" class="text-blue-600 dark:text-blue-400 hover:underline">@QuadTask</a> for questions and feature requests
+         </p>
+    </div>
+</div>
+<div class="relative isolate px-6 pt-2 lg:px-8">
+    <div class="mx-auto max-w-4xl py-16 sm:py-24">
+        <div class="text-center">
+            <h1 class="text-4xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-6xl">
+                Prioritize Tasks with Clarity
+            </h1>
+            <p class="mt-6 text-lg leading-8 text-gray-600 dark:text-gray-300">
+                QuadTask, named after the four quadrants of the Eisenhower Matrix, helps you prioritize and manage tasks effectively.
+                Choose from three powerful visualization methods to stay focused and productive.
+            </p>
+            <div class="mt-6 flex flex-col items-center">
+                <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">
+                    New to the Eisenhower methodology? Learn how this powerful prioritization system can transform your productivity.
+                </p>
+                <a href="/howto" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                    Read the Guide
+                    <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                        <path fill-rule="evenodd" d="M16.72 7.72a.75.75 0 011.06 0l3.75 3.75a.75.75 0 010 1.06l-3.75 3.75a.75.75 0 11-1.06-1.06l2.47-2.47H3a.75.75 0 010-1.5h16.19l-2.47-2.47a.75.75 0 010-1.06z" clip-rule="evenodd" />
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {% if not user_id %}
+    <div class="mx-auto max-w-2xl mb-24 text-center">
+        <div class="rounded-2xl bg-gray-800/5 dark:bg-white/5 ring-1 ring-inset ring-gray-900/10 dark:ring-white/10 p-8">
+            <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Ready to Get Started?</h2>
+            <p class="text-gray-600 dark:text-gray-300 mb-8">Join thousands of users who have improved their productivity with QuadTask.</p>
+            
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <a href="/auth/login/google" 
+                   class="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/>
+                    </svg>
+                    Continue with Google
+                </a>
+                <a href="/auth/login/github"
+                   class="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">
+                    <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/>
+                    </svg>
+                    Continue with GitHub
+                </a>
+            </div>
+            
+            <div class="relative mt-6">
+                <div class="absolute inset-0 flex items-center">
+                    <div class="w-full border-t border-gray-300 dark:border-gray-600"></div>
+                </div>
+                <div class="relative flex justify-center text-sm">
+                    <span class="px-2 bg-gray-800/5 dark:bg-gray-900 text-gray-500 dark:text-gray-400">Or continue with email</span>
+                </div>
+            </div>
+
+            <div class="mt-6">
+                <a href="/auth/login" 
+                   class="w-full inline-flex justify-center items-center px-4 py-2.5 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                    Get Started
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="mx-auto max-w-7xl px-6 lg:px-8">
+        <div class="mx-auto grid max-w-lg grid-cols-1 gap-6 sm:gap-8 lg:max-w-none lg:grid-cols-3">
+            <!-- Eisenhower Matrix Card -->
+            <div onclick="window.location.href='/tasks/matrix'" class="flex flex-col rounded-2xl bg-gray-800/5 dark:bg-white/5 ring-1 ring-inset ring-gray-900/10 dark:ring-white/10 p-8 hover:bg-gray-800/10 dark:hover:bg-white/10 transition-colors cursor-pointer">
+                <h3 class="text-xl font-semibold leading-7 text-gray-900 dark:text-white mb-6">Eisenhower Matrix</h3>
+                <p class="text-sm leading-6 text-gray-600 dark:text-gray-400 mb-6">
+                    The heart of QuadTask - organize tasks using the proven Eisenhower Method:
+                </p>
+                <div class="space-y-4 flex-grow">
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-red-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.75a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.913-.143z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">Urgent & Important (Do First)</span>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-blue-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM12.75 6a.75.75 0 00-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 000-1.5h-3.75V6z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">Not Urgent but Important (Schedule)</span>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-yellow-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">Urgent but Not Important (Delegate)</span>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-gray-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path fill-rule="evenodd" d="M16.5 4.478v.227a48.816 48.816 0 013.878.512.75.75 0 11-.256 1.478l-.209-.035-1.005 13.07a3 3 0 01-2.991 2.77H8.084a3 3 0 01-2.991-2.77L4.087 6.66l-.209.035a.75.75 0 01-.256-1.478A48.567 48.567 0 017.5 4.705v-.227c0-1.564 1.213-2.9 2.816-2.951a52.662 52.662 0 013.369 0c1.603.051 2.815 1.387 2.815 2.951zm-6.136-1.452a51.196 51.196 0 013.273 0C14.39 3.05 15 3.684 15 4.478v.113a49.488 49.488 0 00-6 0v-.113c0-.794.609-1.428 1.364-1.452zm-.355 5.945a.75.75 0 10-1.5.058l.347 9a.75.75 0 101.499-.058l-.346-9zm5.48.058a.75.75 0 10-1.498-.058l-.347 9a.75.75 0 001.5.058l.345-9z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">Neither Urgent nor Important (Eliminate)</span>
+                    </div>
+                </div>
+                <p class="mt-6 text-sm text-gray-500 dark:text-gray-400">Perfect for strategic planning and prioritization.</p>
+            </div>
+
+            <!-- List View Card -->
+            <div onclick="window.location.href='/tasks'" class="flex flex-col rounded-2xl bg-gray-800/5 dark:bg-white/5 ring-1 ring-inset ring-gray-900/10 dark:ring-white/10 p-8 hover:bg-gray-800/10 dark:hover:bg-white/10 transition-colors cursor-pointer">
+                <h3 class="text-xl font-semibold leading-7 text-gray-900 dark:text-white mb-6">List View</h3>
+                <p class="text-sm leading-6 text-gray-600 dark:text-gray-400 mb-6">
+                    A traditional task list with enhanced features:
+                </p>
+                <div class="space-y-4 flex-grow">
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-green-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zM12 8.25a.75.75 0 01.75-.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">Color-coded priority indicators</span>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-blue-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM6.75 12a.75.75 0 01.75-.75h9a.75.75 0 010 1.5h-9a.75.75 0 01-.75-.75zm.75 2.25a.75.75 0 000 1.5h9a.75.75 0 000-1.5h-9z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">Quick status updates</span>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-purple-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 017.5 3v1.5h9V3A.75.75 0 0118 3v1.5h.75a3 3 0 013 3v11.25a3 3 0 01-3 3H5.25a3 3 0 01-3-3V7.5a3 3 0 013-3H6V3a.75.75 0 01.75-.75zm13.5 9a1.5 1.5 0 00-1.5-1.5H5.25a1.5 1.5 0 00-1.5 1.5v7.5a1.5 1.5 0 001.5 1.5h13.5a1.5 1.5 0 001.5-1.5v-7.5z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">Due date tracking</span>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-indigo-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M21.731 2.269a2.625 2.625 0 00-3.712 0l-1.157 1.157 3.712 3.712 1.157-1.157a2.625 2.625 0 000-3.712zM19.513 8.199l-3.712-3.712-12.15 12.15a5.25 5.25 0 00-1.32 2.214l-.8 2.685a.75.75 0 00.933.933l2.685-.8a5.25 5.25 0 002.214-1.32L19.513 8.2z" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">One-click task editing</span>
+                    </div>
+                </div>
+                <p class="mt-6 text-sm text-gray-500 dark:text-gray-400">Ideal for day-to-day task management and quick updates.</p>
+            </div>
+
+            <!-- Swim Lanes Card -->
+            <div onclick="window.location.href='/tasks/swim'" class="flex flex-col rounded-2xl bg-gray-800/5 dark:bg-white/5 ring-1 ring-inset ring-gray-900/10 dark:ring-white/10 p-8 hover:bg-gray-800/10 dark:hover:bg-white/10 transition-colors cursor-pointer">
+                <h3 class="text-xl font-semibold leading-7 text-gray-900 dark:text-white mb-6">Swim Lanes</h3>
+                <p class="text-sm leading-6 text-gray-600 dark:text-gray-400 mb-6">
+                    Kanban-style progress tracking:
+                </p>
+                <div class="space-y-4 flex-grow">
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-orange-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path fill-rule="evenodd" d="M2.625 6.75a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875 0A.75.75 0 018.25 6h12a.75.75 0 010 1.5h-12a.75.75 0 01-.75-.75zM2.625 12a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zM7.5 12a.75.75 0 01.75-.75h12a.75.75 0 010 1.5h-12A.75.75 0 017.5 12zm-4.875 5.25a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875 0a.75.75 0 01.75-.75h12a.75.75 0 010 1.5h-12a.75.75 0 01-.75-.75z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">Todo → In Progress → Done</span>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-teal-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path fill-rule="evenodd" d="M3 6a3 3 0 013-3h2.25a3 3 0 013 3v2.25a3 3 0 01-3 3H6a3 3 0 01-3-3V6zm9.75 0a3 3 0 013-3H18a3 3 0 013 3v2.25a3 3 0 01-3 3h-2.25a3 3 0 01-3-3V6zM3 15.75a3 3 0 013-3h2.25a3 3 0 013 3V18a3 3 0 01-3 3H6a3 3 0 01-3-3v-2.25zm9.75 0a3 3 0 013-3H18a3 3 0 013 3V18a3 3 0 01-3 3h-2.25a3 3 0 01-3-3v-2.25z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">Visual workflow management</span>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-pink-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path fill-rule="evenodd" d="M2.25 13.5a8.25 8.25 0 018.25-8.25.75.75 0 01.75.75v6.75H18a.75.75 0 01.75.75 8.25 8.25 0 01-16.5 0z" clip-rule="evenodd" />
+                            <path fill-rule="evenodd" d="M12.75 3a.75.75 0 01.75-.75 8.25 8.25 0 018.25 8.25.75.75 0 01-.75.75h-7.5a.75.75 0 01-.75-.75V3z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">Progress at a glance</span>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <svg class="h-5 w-5 text-cyan-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path fill-rule="evenodd" d="M16.28 11.47a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 01-1.06-1.06L14.69 12 7.72 5.03a.75.75 0 011.06-1.06l7.5 7.5z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-sm text-gray-600 dark:text-gray-300">Task stage transitions</span>
+                    </div>
+                </div>
+                <p class="mt-6 text-sm text-gray-500 dark:text-gray-400">Best for tracking task progress and workflow visualization.</p>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Productivity Stats -->
+    <div class="mx-auto max-w-4xl mt-16">
+        <div class="rounded-2xl bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 dark:from-blue-400/10 dark:via-purple-400/10 dark:to-pink-400/10 p-6">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="text-center sm:text-left">
+                    {% if not is_anonymous %}
+                        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Your Productivity Stats</h2>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Last 30 days</p>
+                    {% else %}
+                        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">📊 Sample Metrics (Example Data)</h2>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Representative data based on typical user activity</p>
+                        <p class="text-xs text-blue-600 dark:text-blue-400 mt-1">* Not actual data - sign in to track your own stats</p>
+                    {% endif %}
+                </div>
+                {% if user_id %}
+                    <a href="/auth/settings#metrics" class="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300">
+                        View detailed metrics →
+                    </a>
+                {% else %}
+                    <a href="/auth/login" class="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300">
+                        Sign in to track your stats →
+                    </a>
+                {% endif %}
+            </div>
+            <dl class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div class="flex flex-col items-center sm:items-start">
+                    <dt class="text-sm font-medium text-gray-600 dark:text-gray-400">Completed Tasks</dt>
+                    <dd class="mt-1 flex items-baseline justify-center sm:justify-start">
+                        {% if user_id %}
+                            <div class="text-2xl font-semibold text-emerald-600 dark:text-emerald-400">{{ completion_rate }}%</div>
+                            {% if completion_rate_change > 0 %}
+                                <div class="ml-2 flex items-baseline text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                                    <svg class="h-3 w-3 fill-current" viewBox="0 0 12 12">
+                                        <path d="M3 8l3-3 3 3"/>
+                                    </svg>
+                                    <span class="sr-only">Increased by</span>
+                                    {{ completion_rate_change }}%
+                                </div>
+                            {% endif %}
+                        {% else %}
+                            <div class="text-2xl font-semibold text-emerald-600 dark:text-emerald-400">92%</div>
+                            <div class="ml-2 flex items-baseline text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                                <svg class="h-3 w-3 fill-current" viewBox="0 0 12 12">
+                                    <path d="M3 8l3-3 3 3"/>
+                                </svg>
+                                <span class="sr-only">Example increase</span>
+                                15%
+                            </div>
+                        {% endif %}
+                    </dd>
+                </div>
+                <div class="flex flex-col items-center sm:items-start">
+                    <dt class="text-sm font-medium text-gray-600 dark:text-gray-400">High Priority</dt>
+                    <dd class="mt-1 flex items-baseline justify-center sm:justify-start">
+                        {% if user_id %}
+                            <div class="text-2xl font-semibold text-rose-600 dark:text-rose-400">{{ high_priority_percent|default(0) }}%</div>
+                            <div class="ml-2 text-sm text-gray-600 dark:text-gray-400">of total</div>
+                        {% else %}
+                            <div class="text-2xl font-semibold text-rose-600 dark:text-rose-400">35%</div>
+                            <div class="ml-2 text-sm text-gray-600 dark:text-gray-400">of total</div>
+                        {% endif %}
+                    </dd>
+                </div>
+                <div class="flex flex-col items-center sm:items-start">
+                    <dt class="text-sm font-medium text-gray-600 dark:text-gray-400">Avg. Completion</dt>
+                    <dd class="mt-1 flex items-baseline justify-center sm:justify-start">
+                        {% if user_id %}
+                            <div class="text-2xl font-semibold text-amber-600 dark:text-amber-400">{{ avg_completion_days|default(0) }}</div>
+                            <div class="ml-2 text-sm text-gray-600 dark:text-gray-400">days</div>
+                        {% else %}
+                            <div class="text-2xl font-semibold text-amber-600 dark:text-amber-400">1.8</div>
+                            <div class="ml-2 text-sm text-gray-600 dark:text-gray-400">days</div>
+                        {% endif %}
+                    </dd>
+                </div>
+                <div class="flex flex-col items-center sm:items-start">
+                    <dt class="text-sm font-medium text-gray-600 dark:text-gray-400">Monthly Tasks</dt>
+                    <dd class="mt-1 flex items-baseline justify-center sm:justify-start">
+                        {% if user_id %}
+                            <div class="text-2xl font-semibold text-violet-600 dark:text-violet-400">{{ monthly_tasks }}</div>
+                            {% if monthly_tasks_change > 0 %}
+                                <div class="ml-2 flex items-baseline text-sm font-semibold text-violet-600 dark:text-violet-400">
+                                    <svg class="h-3 w-3 fill-current" viewBox="0 0 12 12">
+                                        <path d="M3 8l3-3 3 3"/>
+                                    </svg>
+                                    <span class="sr-only">Increased by</span>
+                                    {{ monthly_tasks_change }}
+                                </div>
+                            {% endif %}
+                        {% else %}
+                            <div class="text-2xl font-semibold text-violet-600 dark:text-violet-400">32</div>
+                            <div class="ml-2 flex items-baseline text-sm font-semibold text-violet-600 dark:text-violet-400">
+                                <svg class="h-3 w-3 fill-current" viewBox="0 0 12 12">
+                                    <path d="M3 8l3-3 3 3"/>
+                                </svg>
+                                <span class="sr-only">Example increase</span>
+                                12
+                            </div>
+                        {% endif %}
+                    </dd>
+                </div>
+            </dl>
+        </div>
+    </div>
+
+    <!-- Roadmap Link -->
+    <div class="mx-auto max-w-4xl mt-16 text-center">
+        <a href="/roadmap" class="inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300">
+            <span>View Feature Roadmap</span>
+            <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path fill-rule="evenodd" d="M16.72 7.72a.75.75 0 011.06 0l3.75 3.75a.75.75 0 010 1.06l-3.75 3.75a.75.75 0 11-1.06-1.06l2.47-2.47H3a.75.75 0 010-1.5h16.19l-2.47-2.47a.75.75 0 010-1.06z" clip-rule="evenodd" />
+            </svg>
+        </a>
+    </div>
+
+    <!-- About the Developer -->
+    <div class="mx-auto max-w-4xl mt-24 mb-16">
+        <div class="rounded-2xl bg-gray-800/5 dark:bg-white/5 ring-1 ring-inset ring-gray-900/10 dark:ring-white/10 p-8">
+            <h2 class="text-2xl font-semibold text-gray-900 dark:text-white mb-4">About the Developer</h2>
+            <p class="text-gray-600 dark:text-gray-300">
+                Hi! I'm passionate about creating tools that help people be more productive and organized. As someone who has struggled with task management and prioritization, I built QuadTask to solve real problems that I and many others face daily. My goal is to help you focus on what truly matters, reduce stress, and accomplish more through better task management.
+            </p>
+            <p class="mt-4 text-gray-600 dark:text-gray-300">
+                I believe that the right tools, combined with proven productivity methods like the Eisenhower Matrix, can transform how we work and help us achieve our goals more effectively. QuadTask is continuously evolving based on user feedback, and I'm committed to making it the best task management solution possible.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
