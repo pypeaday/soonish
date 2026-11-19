@@ -1,0 +1,12 @@
+# GENERAL
+
+EVERY NEW LINE OF CODE IS A NEW LIABILITY, CODE ADDITIONS MUST BE MINIMAL AND NECESSARY.
+- Prefer changing existing code over adding new files or new abstractions.
+- Do not install packages, delete files, or make broad refactors without asking first.
+- If a task is unclear or risky, present findings and a minimal plan before editing.
+
+# FRONTEND RULES
+
+### Development
+
+- make as many changes as you need. the 50 line limit doesn't apply to frontend changes
